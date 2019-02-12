@@ -71,3 +71,27 @@
 - FlightGogglesClient.cpp
     - renders environment in ros and saves images from Unity
 
+### On Run Time
+- In order to run the challenge, need to run the reporter node (reporter.py) and we need to load gate_locations.yaml and challenge_{difficulty}.yaml. We should be able to run this with the external renderer and level args set. When training, we SHOULD set ignore_collisions to false since the results.yaml will reflect a collision, and a bad score.
+
+- The results.yaml file is saved in FlightGoggles/flightgoggles/flightgoggles_reporter/src. The output will say {Result: Collision} if a collision occurs (even when we set ignore collisions to true).
+
+- For the IR markers, we only see the markers when they are in the image output. If we echo /uav/camera/left/ir_beacons we can see what corners are detected. If nothing is in view, we will see an empty message. If we do see something, the marker has the form:
+
+        landmarkID: 
+            data: "Gate5"
+        markerID: 
+            data: "3"
+        x: 837.154907227
+        y: 407.483398438
+        z: 0.0
+
+    Every marker in view will be saved in that one message. Notice we see the Gate the marker belongs to as well as the corner ID number, where 0 is the top left corner. Notice z is **always** zero.
+
+- the /control_nodes/keyboard/keyup and keydown can both be used to determine what inputs we are using to control the drone. It will register **any** keypress, not just ones that actually do anything for the drone. We can use this for recording our input data for imitiation learning if we record our flights for data colelction. I'm not entirely sure if this is the same for joystick but I assume it's very similar.
+
+- Once a collision occurs, /uav/collision will begin publishing empty messages. Before the collision the topic is not updated.
+
+- Echoing /sensors/imu we can see the linear acceleration and angular velocities. The controls for the drone change the angular velocities from -1 to 1 for x, y, and z. The accelerations will be less useful to use. The covariance do not change, looks like they are hard coded.
+
+- The /diagnostics topic provides some information about the joystick / controller
