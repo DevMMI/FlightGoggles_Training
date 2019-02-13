@@ -30,7 +30,7 @@
 ### On config files
 - drone.yaml
     - This file likely cannot be changed
-    - Includes initially pose and vehicle dynamics
+    - Includes initial pose and vehicle dynamics
     - Also includes control parameters (PID, IMU variance, LPF gains)
 
 - challenges
@@ -76,7 +76,16 @@
 
 - The results.yaml file is saved in FlightGoggles/flightgoggles/flightgoggles_reporter/src. The output will say {Result: Collision} if a collision occurs (even when we set ignore collisions to true).
 
-- For the IR markers, we only see the markers when they are in the image output. If we echo /uav/camera/left/ir_beacons we can see what corners are detected. If nothing is in view, we will see an empty message. If we do see something, the marker has the form:
+- After successfully navigating through a gate without collisions and completing a challenge, the results.yaml file will appear similar to below. This is a completion of the easy challenge.
+
+        Gate0:
+            Location: [1.3420574159063834, 33.600399339230584, 2.370399369341433]
+            Name: Gate2
+            Success: 'True'
+            Time: 11.6666676
+        Result: Challenge Completed
+
+- For the IR markers, we only see the markers when they are in the image output, meaning in terms of **IMAGE PIXEL VALUES** and not phyiscal location. If we echo /uav/camera/left/ir_beacons we can see what corners are detected. If nothing is in view, we will see an empty message. If we do see something, the marker has the form:
 
         landmarkID: 
             data: "Gate5"
@@ -86,7 +95,7 @@
         y: 407.483398438
         z: 0.0
 
-    Every marker in view will be saved in that one message. Notice we see the Gate the marker belongs to as well as the corner ID number, where 0 is the top left corner. Notice z is **always** zero.
+    Every marker in view will be saved in that one message. Notice we see the Gate the marker belongs to as well as the corner ID number, where 1 is the top left corner **of the phyiscal gate frame** and not necessarily the view we see (for example approaching from *behind* the gate). Notice z is **always** zero.
 
 - the /control_nodes/keyboard/keyup and keydown can both be used to determine what inputs we are using to control the drone. It will register **any** keypress, not just ones that actually do anything for the drone. We can use this for recording our input data for imitiation learning if we record our flights for data colelction. I'm not entirely sure if this is the same for joystick but I assume it's very similar.
 
