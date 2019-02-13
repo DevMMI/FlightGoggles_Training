@@ -1,4 +1,5 @@
 ## Notes
+https://github.com/mit-fast/FlightGoggles
 
 ### On modifications:
 - flightgoggles_uav_dynamics/src/flightgoggles_uav_dynamics_node.cpp change Uav_Dynamics::collisionCallback collision check from true to false.
