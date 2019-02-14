@@ -8,7 +8,7 @@
 #include "ROSClient.hpp"
 
 #define SHOW_DEBUG_IMAGE_FEED false
-
+using namespace Eigen;
 /// Constructor
 ROSClient::ROSClient(ros::NodeHandle ns, ros::NodeHandle nhPrivate):
     // Node handle
@@ -99,6 +99,19 @@ void ROSClient::populateRenderSettings(){
   cameraInfo.P = {f, 0.0, cx, 0, 0.0, f, cy, 0, 0.0, 0.0, 1.0, 0.0}; // elements Tx and Ty should be different for the second camera in a stereo pair. Here they are 0.
 }
 
+
+Eigen::Affine3d create_rotation_matrix(double ax, double ay, double az) {
+  Eigen::Affine3d rx =
+      Eigen::Affine3d(Eigen::AngleAxisd(ax, Eigen::Vector3d(1, 0, 0)));
+  Eigen::Affine3d ry =
+      Eigen::Affine3d(Eigen::AngleAxisd(ay, Eigen::Vector3d(0, 1, 0)));
+  Eigen::Affine3d rz =
+      Eigen::Affine3d(Eigen::AngleAxisd(az, Eigen::Vector3d(0, 0, 1)));
+  return rz * ry * rx;
+}
+ 
+bool first = true;
+Vector3d first_pos;
 // Subscribe to all TF messages to avoid lag.
 void ROSClient::tfCallback(tf2_msgs::TFMessage::Ptr msg){
     geometry_msgs::TransformStamped world_to_uav;
@@ -119,6 +132,17 @@ void ROSClient::tfCallback(tf2_msgs::TFMessage::Ptr msg){
     if (numSimulationStepsSinceLastRender_ >= numSimulationStepsBeforeRenderRequest_){
 
         Transform3 imu_pose_eigen = tf2::transformToEigen(world_to_uav.transform);
+	auto t = imu_pose_eigen.translation();
+	ROS_ERROR_STREAM(t[0]<<","<<t[1]<<","<<t[2]);
+	Transform3 nimbus_pose;
+	//Vector3d v(0.35, 35.3, 2.02);
+	Vector3d v(0.3, 52.0, 2.5);
+	nimbus_pose.translate(v);
+	Quaternion<double> q(0.0, 0.0, -0.707, 0.707);
+	nimbus_pose.rotate(q);
+	//ROS_ERROR_STREAM("reached");
+	//nimbus_pose.translate(
+	//ROS_ERROR_STREAM(imu_pose_eigen);
 //        Transform3 cam_pose_eigen;
         // Apply drone to camera transform
 //        tf2::doTransform(imu_pose_eigen, cam_pose_eigen, imu_T_Camera_);
@@ -126,7 +150,13 @@ void ROSClient::tfCallback(tf2_msgs::TFMessage::Ptr msg){
 //        std::cout << imu_pose_eigen.matrix() << std::endl;
 
         // Populate status message with new pose
-        flightGoggles.setCameraPoseUsingROSCoordinates(imu_pose_eigen, 0);
+	if(first){
+        	flightGoggles.setCameraPoseUsingROSCoordinates(nimbus_pose, 0);
+		first = false;
+		first_pos = t;
+	}else{
+		flightGoggles.setCameraPoseUsingROSCoordinates(imu_pose_eigen, 0);
+	}
 //    flightGoggles.setCameraPoseUsingROSCoordinates(cam_pose_eigen, 1);
 
         // Update timestamp of state message (needed to force FlightGoggles to rerender scene)

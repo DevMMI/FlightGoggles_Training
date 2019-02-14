@@ -156,6 +156,11 @@ unity_incoming::RenderOutput_t FlightGogglesClient::handleImageResponse()
     // For each camera, save the received image.
     for (uint i = 0; i < renderMetadata.cameraIDs.size(); i++)
     {
+	//ROS_ERROR_STREAM("camera ids sz "<<renderMetadata.cameraIDs.size());
+	std::fstream file;
+	file.open("/home/mohamedisse/catkin_ws/test.txt", std::fstream::out);
+	file << renderMetadata.cameraIDs.size();
+   	file.close();
 
         // Reshape the received image
         // Calculate how long the casted and reshaped image will be.
