@@ -11,7 +11,9 @@ import math
 import numpy as np
 import yaml
 import signal
-from std_msgs.msg import Empty
+from std_msgs.msg import Empty, Bool
+
+pub = rospy.Publisher("/uav/complete", Bool, queue_size=10)
 
 class Gate():
 	## Constructor for class gate
@@ -93,6 +95,7 @@ class ReporterNode():
 		name=rospy.get_param('/uav/challenge_name', '')
 		if (name == ''):
 			rospy.logerr("Challenge name could not be read")
+			pub.publish(0)
 			rospy.signal_shutdown("Challenge parameter [name] could not be read")
 
 		rospy.loginfo("Running challenge %s", name)
@@ -101,6 +104,7 @@ class ReporterNode():
 		timeout = rospy.get_param('/uav/timeout', -1)
 		if (timeout == -1):
 			rospy.logerr("Timeout not specified!")
+			pub.publish(0)
 			rospy.signal_shutdown("Challenge parameter [timeout] could not be read")
 		rospy.Timer(rospy.Duration(timeout), self.timerCallback)
 
@@ -120,6 +124,7 @@ class ReporterNode():
 			loc = np.asarray(rospy.get_param("/uav/%s/location"%e, "[]"))
 			if (loc.shape[0] !=4 or loc.shape[1] != 3):
 				rospy.logerr("Location not specified in correct format")
+				pub.publish(0)
 				rospy.signal_shutdown("Location not specified in correct format")
 			gates.append(Gate(loc, inflation))
 
@@ -146,14 +151,17 @@ class ReporterNode():
 					self.eventLogData["Result"]="Challenge Completed"
 					self.writeLog()
 					rospy.loginfo("Completed the challenge")
+					pub.publish(1)
 					rospy.signal_shutdown("Challenge complete")
 
+			rospy.Rate(rate)
 			rospy.sleep(1./rate)
 
 	## @brief timerCallback callback for elapsed timer to enable the reporter to timeout
 	# @param self the object pointer
 	# @param event timer event
 	def timerCallback(self, event):
+		pub.publish(0)
 		self.eventLogData["Result"] = "Timed out"
 		rospy.loginfo("The challenge timed out!")
 		self.writeLog()
@@ -169,6 +177,7 @@ class ReporterNode():
 	# @param self The object pointer
 	# @param data The collision message
 	def collisionCallback(self, data):
+		pub.publish(0)
 		self.eventLogData["Result"]="Collision"
 		rospy.loginfo("The drone collided!")
 		self.writeLog()
@@ -176,6 +185,7 @@ class ReporterNode():
 
 	## @brief signalHandler to handle the reporter being interrupted by SIGINT
 	def signalHandler(self, sig, frame):
+		pub.publish(0)
 		self.eventLogData["Result"]="Interrupted" 
 		self.writeLog()
 		rospy.loginfo("Grading was interrupted")
