@@ -41,7 +41,7 @@ node_(nh),
 // TF listener
 tfListener_(tfBuffer_)
 {
-  // boost::shared_ptr<geometry_msgs::Pose const> initialPose = ros::topic::waitForMessage<geometry_msgs::Pose>("challenge/randStartPos"); 	
+  // boost::shared_ptr<geometry_msgs::Pose const> initialPose = ros::topic::waitForMessage<geometry_msgs::Pose>("challenge/randStartPos");
 
   if (!ros::param::get("/uav/flightgoggles_uav_dynamics/clockscale", clockScale)) {
     std::cout << "Did not get a clock scaling value. Defaulting to realtime 1.0x" << std::endl;
@@ -53,57 +53,57 @@ tfListener_(tfBuffer_)
       std::cout << "could not get param" << std::endl;
   }
 
-  if (!ros::param::get("/uav/flightgoggles_uav_dynamics/vehicle_mass", vehicleMass_)) { 
+  if (!ros::param::get("/uav/flightgoggles_uav_dynamics/vehicle_mass", vehicleMass_)) {
       std::cout << "Did not get the vehicle mass from the params, defaulting to 1kg" << std::endl;
   }
 
-  if (!ros::param::get("/uav/flightgoggles_uav_dynamics/motor_time_constant", motorTimeconstant_)) { 
+  if (!ros::param::get("/uav/flightgoggles_uav_dynamics/motor_time_constant", motorTimeconstant_)) {
       std::cout << "Did not get the motor time constant from the params, defaulting to 0.02" << std::endl;
   }
 
-  if (!ros::param::get("/uav/flightgoggles_uav_dynamics/moment_arm", momentArm_)) { 
+  if (!ros::param::get("/uav/flightgoggles_uav_dynamics/moment_arm", momentArm_)) {
       std::cout << "Did not get the moment arm from the params, defaulting to 0.08" << std::endl;
   }
 
-  if (!ros::param::get("/uav/flightgoggles_uav_dynamics/thrust_coefficient", thrustCoeff_)) { 
+  if (!ros::param::get("/uav/flightgoggles_uav_dynamics/thrust_coefficient", thrustCoeff_)) {
       std::cout << "Did not get the thrust coefficient from the params, defaulting to 1.91e-6" << std::endl;
   }
-  
-  if (!ros::param::get("/uav/flightgoggles_uav_dynamics/torque_coefficient", torqueCoeff_)) { 
+
+  if (!ros::param::get("/uav/flightgoggles_uav_dynamics/torque_coefficient", torqueCoeff_)) {
       std::cout << "Did not get the torque coefficient from the params, defaulting to 2.6e-7" << std::endl;
   }
 
-  if (!ros::param::get("/uav/flightgoggles_uav_dynamics/drag_coefficient", dragCoeff_)) { 
+  if (!ros::param::get("/uav/flightgoggles_uav_dynamics/drag_coefficient", dragCoeff_)) {
       std::cout << "Did not get the drag coefficient from the params, defaulting to 0.1" << std::endl;
   }
 
-  if (!ros::param::get("/uav/flightgoggles_uav_dynamics/vehicle_inertia_xx", vehicleInertia_[0])) { 
+  if (!ros::param::get("/uav/flightgoggles_uav_dynamics/vehicle_inertia_xx", vehicleInertia_[0])) {
       std::cout << "Did not get the inertia (x) from the params, defaulting to 0.0049 kg m^2" << std::endl;
   }
-  
-  if (!ros::param::get("/uav/flightgoggles_uav_dynamics/vehicle_inertia_yy", vehicleInertia_[1])) { 
+
+  if (!ros::param::get("/uav/flightgoggles_uav_dynamics/vehicle_inertia_yy", vehicleInertia_[1])) {
       std::cout << "Did not get the inertia (y) from the params, defaulting to 0.0049 kg m^2" << std::endl;
   }
 
-  if (!ros::param::get("/uav/flightgoggles_uav_dynamics/vehicle_inertia_zz", vehicleInertia_[2])) { 
+  if (!ros::param::get("/uav/flightgoggles_uav_dynamics/vehicle_inertia_zz", vehicleInertia_[2])) {
       std::cout << "Did not get the inertia (z) from the params, defaulting to 0.0069 kg m^2" << std::endl;
   }
 
-  if (!ros::param::get("/uav/flightgoggles_uav_dynamics/max_prop_speed", maxPropSpeed_)) { 
+  if (!ros::param::get("/uav/flightgoggles_uav_dynamics/max_prop_speed", maxPropSpeed_)) {
       std::cout << "Did not get the max prop speed from the params, defaulting to 2200 rad/s" << std::endl;
   }
 
-  if (!ros::param::get("/uav/flightgoggles_uav_dynamics/angular_process_noise", angAccelProcessNoiseAutoCorrelation_)) { 
+  if (!ros::param::get("/uav/flightgoggles_uav_dynamics/angular_process_noise", angAccelProcessNoiseAutoCorrelation_)) {
       std::cout << "Did not get the angular process noise from the params, defaulting to 0.00025 rad^2/s^2" << std::endl;
   }
 
-  if (!ros::param::get("/uav/flightgoggles_uav_dynamics/linear_process_noise", linAccelProcessNoiseAutoCorrelation_)) { 
+  if (!ros::param::get("/uav/flightgoggles_uav_dynamics/linear_process_noise", linAccelProcessNoiseAutoCorrelation_)) {
       std::cout << "Did not get the linear process noise from the params, defaulting to 0.0005 m^2/s^3" << std::endl;
   }
-  
-  if (!ros::param::get("/use_sim_time", useSimTime_)) {} 
 
-  std::vector<double> initPose(7,0); 
+  if (!ros::param::get("/use_sim_time", useSimTime_)) {}
+
+  std::vector<double> initPose(7,0);
   if (!ros::param::get("/uav/flightgoggles_uav_dynamics/init_pose", initPose)) {
     // Start a few meters above the ground.
     std::cout << "Did NOT find initial pose from param file" << std::endl;
@@ -141,12 +141,17 @@ tfListener_(tfBuffer_)
 
   lpf_.lastUpdateTime_ = currentTime_;
   pid_.lastUpdateTime_ = currentTime_;
+  std::cout<<"reached"<<std::endl;
 
   // Init subscribers and publishers
   imuPub_ = node_.advertise<sensor_msgs::Imu>("/sensors/imu", 1);
   inputCommandSub_ = node_.subscribe("/uav/input/rateThrust", 1, &Uav_Dynamics::inputCallback, this);
   collisionSub_ = node_.subscribe("/uav/collision", 1, &Uav_Dynamics::collisionCallback, this);
   frameRateSub_ = node_.subscribe("/uav/camera/debug/fps", 1, &Uav_Dynamics::fpsCallback, this);
+  std::cout << "creating new pos init"<<std::endl;
+  new_pos_init_sub = node_.subscribe("/new_pos_init", 1, &Uav_Dynamics::newPosInitCallback, this);
+  std::cout << "created new pos init"<<std::endl;
+
   clockPub_ = node_.advertise<rosgraph_msgs::Clock>("/clock",1);
 
   clockPub_.publish(currentTime_);
@@ -155,12 +160,25 @@ tfListener_(tfBuffer_)
   simulationLoopTimer_.start();
 }
 
+ void Uav_Dynamics::newPosInitCallback(geometry_msgs::Pose::Ptr msg){
+
+   position_[0] = msg->position.x;
+   position_[1] = msg->position.y;
+   position_[2] = msg->position.z;
+
+   attitude_[0] = msg->orientation.x;
+   attitude_[1] = msg->orientation.y;
+   attitude_[2] = msg->orientation.z;
+   attitude_[3] = msg->orientation.w;
+
+}
+
 /**
  * Callback to handle the frame rate from unity
  * @param msg Float msg of frame rate in sim time from unity
  */
-void Uav_Dynamics::fpsCallback(std_msgs::Float32::Ptr msg) { 
-  actualFps = msg->data; 
+void Uav_Dynamics::fpsCallback(std_msgs::Float32::Ptr msg) {
+  actualFps = msg->data;
 }
 
 
@@ -212,7 +230,7 @@ void Uav_Dynamics::simulationLoopTimerCallback(const ros::WallTimerEvent& event)
  */
 void Uav_Dynamics::inputCallback(mav_msgs::RateThrust::Ptr msg){
 	lastCommandMsg_ = msg;
-	if (!armed_) { 
+	if (!armed_) {
 		if (msg->thrust.z >= (1.1 * vehicleMass_ * grav_))
 			armed_ = true;
 	}
@@ -304,7 +322,7 @@ void Uav_Dynamics::proceedState(void){
     propSpeed_[i] += fmin(dt_secs,motorTimeconstant_)*((propSpeedCommand_[i] - propSpeed_[i])/motorTimeconstant_);
 
   double specificThrust = thrustCoeff_*(pow(propSpeed_[0],2.) + pow(propSpeed_[1],2.) + pow(propSpeed_[2],2.) + pow(propSpeed_[3],2.))/vehicleMass_;
-  
+
   double speed = sqrt(pow(velocity_[0],2.) + pow(velocity_[1],2.) + pow(velocity_[2],2.));
   if (includeDrag_ && (speed > 0.)){
     double drag = dragCoeff_*pow(speed,2.);
@@ -390,11 +408,11 @@ void Uav_Dynamics::publishState(void){
  * Constructor for Uav_Imu
  */
 Uav_Imu::Uav_Imu(){
-  if (!ros::param::get("/uav/flightgoggles_imu/accelerometer_variance", accMeasNoiseVariance_)) { 
+  if (!ros::param::get("/uav/flightgoggles_imu/accelerometer_variance", accMeasNoiseVariance_)) {
       std::cout << "Did not get the accelerometer variance from the params, defaulting to 0.005 m^2/s^4" << std::endl;
   }
 
-  if (!ros::param::get("/uav/flightgoggles_imu/gyroscope_variance", gyroMeasNoiseVariance_)) { 
+  if (!ros::param::get("/uav/flightgoggles_imu/gyroscope_variance", gyroMeasNoiseVariance_)) {
       std::cout << "Did not get the gyroscope variance from the params, defaulting to 0.003 rad^2/s^2" << std::endl;
   }
 }
@@ -446,7 +464,7 @@ Uav_LowPassFilter::Uav_LowPassFilter(){
 
   if ((!ros::param::get("/uav/flightgoggles_lpf/gain_p", temp1)) ||
       (!ros::param::get("/uav/flightgoggles_lpf/gain_q", temp2)))
-  { 
+  {
       std::cout << "Did not get the LPF gain_p and/or gain_q from the params, defaulting to 30 Hz cutoff freq." << std::endl;
   }
   else
@@ -485,51 +503,51 @@ void Uav_LowPassFilter::proceedState(geometry_msgs::Vector3 & value, ros::Time c
  * Constructor for the Uav Pid
  */
 Uav_Pid::Uav_Pid(){
-  if (!ros::param::get("/uav/flightgoggles_pid/gain_p_roll", propGain_[0])) { 
+  if (!ros::param::get("/uav/flightgoggles_pid/gain_p_roll", propGain_[0])) {
       std::cout << "Did not get the gain p roll from the params, defaulting to 9.0" << std::endl;
   }
 
-  if (!ros::param::get("/uav/flightgoggles_pid/gain_i_roll", intGain_[0])) { 
+  if (!ros::param::get("/uav/flightgoggles_pid/gain_i_roll", intGain_[0])) {
       std::cout << "Did not get the gain i roll from the params, defaulting to 3.0" << std::endl;
   }
 
-  if (!ros::param::get("/uav/flightgoggles_pid/gain_d_roll", derGain_[0])) { 
+  if (!ros::param::get("/uav/flightgoggles_pid/gain_d_roll", derGain_[0])) {
       std::cout << "Did not get the gain d roll from the params, defaulting to 0.3" << std::endl;
   }
 
-  if (!ros::param::get("/uav/flightgoggles_pid/gain_p_pitch", propGain_[1])) { 
+  if (!ros::param::get("/uav/flightgoggles_pid/gain_p_pitch", propGain_[1])) {
       std::cout << "Did not get the gain p pitch from the params, defaulting to 9.0" << std::endl;
   }
 
-  if (!ros::param::get("/uav/flightgoggles_pid/gain_i_pitch", intGain_[1])) { 
+  if (!ros::param::get("/uav/flightgoggles_pid/gain_i_pitch", intGain_[1])) {
       std::cout << "Did not get the gain i pitch from the params, defaulting to 3.0" << std::endl;
   }
 
-  if (!ros::param::get("/uav/flightgoggles_pid/gain_d_pitch", derGain_[1])) { 
+  if (!ros::param::get("/uav/flightgoggles_pid/gain_d_pitch", derGain_[1])) {
       std::cout << "Did not get the gain d pitch from the params, defaulting to 0.3" << std::endl;
   }
 
-  if (!ros::param::get("/uav/flightgoggles_pid/gain_p_yaw", propGain_[2])) { 
+  if (!ros::param::get("/uav/flightgoggles_pid/gain_p_yaw", propGain_[2])) {
       std::cout << "Did not get the gain p yaw from the params, defaulting to 9.0" << std::endl;
   }
 
-  if (!ros::param::get("/uav/flightgoggles_pid/gain_i_yaw", intGain_[2])) { 
+  if (!ros::param::get("/uav/flightgoggles_pid/gain_i_yaw", intGain_[2])) {
       std::cout << "Did not get the gain i yaw from the params, defaulting to 3.0" << std::endl;
   }
 
-  if (!ros::param::get("/uav/flightgoggles_pid/gain_d_yaw", derGain_[2])) { 
+  if (!ros::param::get("/uav/flightgoggles_pid/gain_d_yaw", derGain_[2])) {
       std::cout << "Did not get the gain d yaw from the params, defaulting to 0.3" << std::endl;
   }
 
-  if (!ros::param::get("/uav/flightgoggles_pid/int_bound_roll", intBound_[0])) { 
+  if (!ros::param::get("/uav/flightgoggles_pid/int_bound_roll", intBound_[0])) {
       std::cout << "Did not get the roll integrator bound from the params, defaulting to 1000.0" << std::endl;
   }
 
-  if (!ros::param::get("/uav/flightgoggles_pid/int_bound_pitch", intBound_[1])) { 
+  if (!ros::param::get("/uav/flightgoggles_pid/int_bound_pitch", intBound_[1])) {
       std::cout << "Did not get the pitch integrator bound from the params, defaulting to 1000.0" << std::endl;
   }
 
-  if (!ros::param::get("/uav/flightgoggles_pid/int_bound_yaw", intBound_[2])) { 
+  if (!ros::param::get("/uav/flightgoggles_pid/int_bound_yaw", intBound_[2])) {
       std::cout << "Did not get the yaw integrator bound from the params, defaulting to 1000.0" << std::endl;
   }
 }

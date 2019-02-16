@@ -20,6 +20,7 @@
 #include <mav_msgs/RateThrust.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/TransformStamped.h>
+#include <std_msgs/String.h>
 #include <sensor_msgs/Imu.h>
 #include <std_msgs/Float32.h>
 #include <rosgraph_msgs/Clock.h>
@@ -35,7 +36,7 @@ class Uav_Imu {
         /// @name Accessors
         void getMeasurement(sensor_msgs::Imu & meas,
             double * angVel, double * accel, ros::Time currTime);
-        
+
     private:
         /// @name Noise Generation Helpers
         //@{
@@ -92,7 +93,7 @@ class Uav_Dynamics {
         /// @name Constructor
         // Requires nodehandle
         Uav_Dynamics(ros::NodeHandle nh);
-        
+
         /// @name Node handle
         ros::NodeHandle node_;
 
@@ -113,7 +114,8 @@ class Uav_Dynamics {
         //@{
         ros::Subscriber inputCommandSub_;
         ros::Subscriber collisionSub_;
-	    ros::Subscriber frameRateSub_;
+	      ros::Subscriber frameRateSub_;
+        ros::Subscriber new_pos_init_sub;
         //@}
 
         /// @name Timers
@@ -126,7 +128,9 @@ class Uav_Dynamics {
         void simulationLoopTimerCallback(const ros::WallTimerEvent& event);
         void inputCallback(mav_msgs::RateThrust::Ptr msg);
         void collisionCallback(std_msgs::Empty::Ptr msg);
-	    void fpsCallback(std_msgs::Float32::Ptr msg);
+	      void fpsCallback(std_msgs::Float32::Ptr msg);
+        void newPosInitCallback(geometry_msgs::Pose::Ptr msg);
+
         //@}
 
         /// @name Storage Variables
@@ -168,7 +172,7 @@ class Uav_Dynamics {
 
         /* Motors are numbered counterclockwise (look at quadcopter from above) with
            motor 1 in the positive quadrant of the X-Y plane (i.e. front left). */
-       
+
         /// @name Vehicle properties
         //@{
         double vehicleMass_ = 1.0; // kg
