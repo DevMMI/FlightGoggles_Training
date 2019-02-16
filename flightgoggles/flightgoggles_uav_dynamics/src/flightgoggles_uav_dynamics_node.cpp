@@ -223,7 +223,7 @@ void Uav_Dynamics::inputCallback(mav_msgs::RateThrust::Ptr msg){
  * @param msg Empty message, this will be recieved when a collision is detected
  */
 void Uav_Dynamics::collisionCallback(std_msgs::Empty::Ptr msg){
-  hasCollided_ = true;
+  hasCollided_ = false;
 }
 
 /**
