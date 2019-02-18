@@ -132,17 +132,6 @@ void ROSClient::tfCallback(tf2_msgs::TFMessage::Ptr msg){
     if (numSimulationStepsSinceLastRender_ >= numSimulationStepsBeforeRenderRequest_){
 
         Transform3 imu_pose_eigen = tf2::transformToEigen(world_to_uav.transform);
-	auto t = imu_pose_eigen.translation();
-	ROS_ERROR_STREAM(t[0]<<","<<t[1]<<","<<t[2]);
-	Transform3 nimbus_pose;
-	//Vector3d v(0.35, 35.3, 2.02);
-	Vector3d v(0.3, 52.0, 2.5);
-	nimbus_pose.translate(v);
-	Quaternion<double> q(0.0, 0.0, -0.707, 0.707);
-	nimbus_pose.rotate(q);
-	//ROS_ERROR_STREAM("reached");
-	//nimbus_pose.translate(
-	//ROS_ERROR_STREAM(imu_pose_eigen);
 //        Transform3 cam_pose_eigen;
         // Apply drone to camera transform
 //        tf2::doTransform(imu_pose_eigen, cam_pose_eigen, imu_T_Camera_);
@@ -150,13 +139,7 @@ void ROSClient::tfCallback(tf2_msgs::TFMessage::Ptr msg){
 //        std::cout << imu_pose_eigen.matrix() << std::endl;
 
         // Populate status message with new pose
-	if(first){
-        	flightGoggles.setCameraPoseUsingROSCoordinates(nimbus_pose, 0);
-		first = false;
-		first_pos = t;
-	}else{
-		flightGoggles.setCameraPoseUsingROSCoordinates(imu_pose_eigen, 0);
-	}
+        flightGoggles.setCameraPoseUsingROSCoordinates(imu_pose_eigen, 0);
 //    flightGoggles.setCameraPoseUsingROSCoordinates(cam_pose_eigen, 1);
 
         // Update timestamp of state message (needed to force FlightGoggles to rerender scene)
@@ -164,7 +147,7 @@ void ROSClient::tfCallback(tf2_msgs::TFMessage::Ptr msg){
         // request render
         flightGoggles.requestRender();
 
-        numSimulationStepsSinceLastRender_ = 0;
+numSimulationStepsSinceLastRender_ = 0;
 
     } else {
         numSimulationStepsSinceLastRender_++;

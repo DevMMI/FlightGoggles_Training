@@ -205,14 +205,12 @@ void teleop::Teleop::control(void)
     if (last_joy_msg.axes.empty()) return;
 
     // yaw and pitch on same axis
-    float pitch = last_joy_msg.axes[joy_axes["pitch"]];
+    float pitch = -last_joy_msg.axes[joy_axes["pitch"]];
 
     float roll = -last_joy_msg.axes[joy_axes["roll"]];
 
     float yaw = last_joy_msg.axes[joy_axes["yaw"]];
 
-    roll = -yaw;
-    yaw = last_joy_msg.axes[joy_axes["roll"]];
     float vertical = last_joy_msg.axes[joy_axes["vertical"]];
 
     /* check deadzones */

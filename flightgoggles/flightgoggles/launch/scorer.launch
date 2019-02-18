@@ -25,7 +25,7 @@
     <arg name="use_external_renderer" value="$(arg use_external_renderer)"/>
     <arg name="render_stereo" value="$(arg render_stereo)"/>
     <arg name="ignore_collisions" value="$(arg ignore_collisions)"/>
-    <arg name="gate_locations" value="$(arg gate_locations)"/>
+    <!-- <arg name="gate_locations" value="$(arg gate_locations)"/> -->
   </include>
 
   <node name="reporter" pkg="flightgoggles_reporter" type="reporter.py" output="screen" cwd='node' required="true"/>
@@ -33,9 +33,14 @@
 
   <!--For teleoperation, run dynamics in real time-->
   <param name="/use_sim_time" value="true" />
-  
+ 
+<group ns="/uav"> 
   <rosparam command="load" file="$(find flightgoggles)/config/challenges/gate_locations_$(arg gate_locations).yaml"/>
+</group>
+
+<group ns="/uav">
   <rosparam command="load" file="$(find flightgoggles)/config/challenges/challenge_final.yaml"/>  
+</group>
 
 </launch>
 
