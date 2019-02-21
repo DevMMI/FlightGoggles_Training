@@ -4,54 +4,95 @@ import tf
 import math
 import signal
 import sys
+import os
 from geometry_msgs.msg import Pose, Point, Quaternion
 from random import randint
-gate_list_dir = "flightgoggles/flightgoggles/config/challenges/gate_locations.yaml"
+#gate_list_dir = "flightgoggles/flightgoggles/config/challenges/gate_locations.yaml"
+gate_list_dir = "flightgoggles/flightgoggles/config/challenges"
 
 class Vector3F:
-    def __init__(self, x, y, z):
+    def __init__(self, x=0.0, y=0.0, z=0.0):
         """ Create four points that make up a gate """
         self.x = x
         self.y = y
         self.z = z
+    def __eq__(self, other):
+        if(other.x == self.x and other.y == self.y and other.z == self.z):
+            return True
+        else:
+            return False
+
+    def __ne__(self, other):
+        if(not (self == other)):
+            return True
+        else:
+            return False
+
 
 class Gate:
-    def __init__(self, a=0.0, b=0.0, c=0.0, d=0.0):
+    def __init__(self, a=Vector3F(), b=Vector3F(), c=Vector3F(), d=Vector3F()):
         """ Create four points that make up a gate """
         self.a = a
         self.b = b
         self.c = c
         self.d = d
 
+    def __eq__(self, other):
+        if(other.a == self.a and other.b == self.b and other.c == self.c  and other.d == self.d):
+            return True
+        if(other.a == self.b and other.b == self.a and other.c == self.d and other.d == self.c):
+            return True
+        else:
+            return False
+    def __ne__(self, other):
+        if(not (self == other) ):
+            return True
+        else:
+            return False
+
+
 def signal_handler(sig, frame):
         print('\n Bye bye!')
         sys.exit(0)
 
-def setupGates():
-    f = open(gate_list_dir, "r")
-    gates = []
+pairs = {}
+gate_storage = []
+def setupGates(filename):
+    global gate_storage
+    file_str = os.path.join(gate_list_dir, filename)
+    f = open(file_str, "r")
     for i, line in enumerate(f):
-      # each even line should be a gate
-      if (i+1) % 2 == 0:
-          str_total = line[12:][1:-2]
-          str_total = str_total.replace(' ', '')
-          str_arrays = str_total.split("],[")
-          gate = Gate()
-          for j, arr in enumerate(str_arrays):
+        # each even line should be a gate
+        if (i+1) % 2 == 0:
+            str_total = line[12:][1:-2]
+            str_total = str_total.replace(' ', '')
+            str_arrays = str_total.split("],[")
+            gate = Gate()
+            for j, arr in enumerate(str_arrays):
 
-              gate_vals = arr.strip(']').strip('[').split(",")
-              v = Vector3F(gate_vals[0],gate_vals[1],gate_vals[2])
+                gate_vals = arr.strip(']').strip('[').split(",")
+                v = Vector3F(gate_vals[0],gate_vals[1],gate_vals[2])
 
-              if j == 0:
+                if j == 0:
                   gate.a = v
-              elif j == 1:
+                elif j == 1:
                   gate.b = v
-              elif j == 2:
+                elif j == 2:
                   gate.c = v
-              elif j == 3:
+                elif j == 3:
                   gate.d = v
-          gates.append(gate)
-    return gates
+
+            already_there = False
+            for gate_ in gate_storage:
+                if(gate == gate_):
+                    print("already there")
+                    already_there = True
+                    pairs[len(pairs)+1] = (gate, gate_)
+                    break
+
+            if(not already_there):
+                gate_storage.append(gate)
+
 
 def spawn(gate, pub):
     vectora = gate.a
@@ -78,12 +119,13 @@ def talker():
 def start_tour(gates, publisher):
     num_orientations = 12
     dist_from_gate = 2.0
+    print("total num of gates {}".format(len(gates)))
     for i, gate in enumerate(gates):
         print("")
         tleft = gate.a
         tright = gate.b
-        bleft = gate.c
-        bright = gate.d
+        bright = gate.c
+        bleft = gate.d
 
         # calculate position from gate
         position_z = (float(tleft.z) + float(bleft.z)) / 2.0
@@ -129,6 +171,8 @@ def start_tour(gates, publisher):
                 pose = Pose(desired_pos, desired_orientation)
                 publisher.publish(pose)
                 input = raw_input("Press Enter to continue, s to turn drone 180, a for left, w for forward...")
+            else:
+                input = raw_input("Press Enter to continue, s to turn drone 180, a for left, w for forward...")
 
 
 def main():
@@ -138,7 +182,10 @@ def main():
     rospy.init_node('collect_data_node')
     rate = rospy.Rate(10) # 10hz
 
-    gates = setupGates()
+    gates_files = []
+    for file in os.listdir(gate_list_dir):
+        if(file.startswith("gate_locations")):
+            setupGates(file)
     ## example of how gates are formatted ##
     # for g in gates:
     #     vectora = g.a
@@ -152,10 +199,16 @@ def main():
     #     print("\n")
 
     # start tour
+    # pairs_list = []
+    # for it in pairs:
+    #     pair = pairs[it]
+    #     pairs_list.append(pair[0])
+    #     pairs_list.append(pair[1])
+
     while not rospy.is_shutdown():
         connections = pub.get_num_connections()
         if connections != 0:
-            start_tour(gates, pub)
+            start_tour(gate_storage, pub)
             time.sleep(7)
             break
 
