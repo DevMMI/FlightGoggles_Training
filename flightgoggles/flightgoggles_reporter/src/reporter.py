@@ -198,3 +198,4 @@ if __name__ == '__main__':
 		ne = ReporterNode()
 	except rospy.ROSInterruptException: pass
 
+ 
