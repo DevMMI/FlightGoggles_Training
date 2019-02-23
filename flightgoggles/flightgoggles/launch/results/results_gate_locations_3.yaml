@@ -1,0 +1,11 @@
+Gate0:
+  Location: [17.4325438158748, 2.059638725264562, 6.698509825829379]
+  Name: Gate10
+  Success: 'True'
+  Time: 14.933334528
+Gate1:
+  Location: [15.91168895087078, 38.12200226125041, 5.822584976477483]
+  Name: Gate21
+  Success: 'True'
+  Time: 22.608335142
+Result: Collision
