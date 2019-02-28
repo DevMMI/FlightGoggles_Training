@@ -1,3 +1,5 @@
 /*/.gitignore
 data/images/*
 data/labels/*
+flightgoggles/core
+*/core
