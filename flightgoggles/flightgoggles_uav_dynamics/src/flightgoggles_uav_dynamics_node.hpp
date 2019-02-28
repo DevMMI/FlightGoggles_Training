@@ -51,11 +51,11 @@ class Uav_LowPassFilter{
     public:
         /// @name Constructor
         Uav_LowPassFilter();
-        void proceedState(geometry_msgs::Vector3 & value, ros::Time currTime);
+        void proceedState(geometry_msgs::Vector3 & value, double dt);
+        void resetState(void);
 
         /// @name Low-Pass Filter State Variables
         //@{
-        ros::Time lastUpdateTime_;
         double filterState_[3] = {0.,0.,0.};
         double filterStateDer_[3] = {0.,0.,0.};
         //@}
@@ -73,9 +73,8 @@ class Uav_Pid {
         /// @name Constructor
         Uav_Pid();
         void controlUpdate(geometry_msgs::Vector3 & command, double * curval,
-                      double * curder, double * out, ros::Time currTime);
-
-        ros::Time lastUpdateTime_;
+                      double * curder, double * out, double dt);
+        void resetState(void);
 
     private:
         /// @name PID Controller Parameters
@@ -138,17 +137,24 @@ class Uav_Dynamics {
         mav_msgs::RateThrust::Ptr lastCommandMsg_;
         sensor_msgs::Imu imuMeasurement_;
         ros::Time currentTime_;
+        ros::Time timeLastReset_;
         //@}
 
-        const double dt_secs = 1.0f/120;
+        double dt_secs = 1.0f/960.;
+        bool useAutomaticClockscale_ = false;
         double clockScale = 1.0;
         double actualFps  = -1;
+
+        double resetTimeout_ = 0.1;
+        // Min input thrust required before drone is allowed to take off.
+        double minArmingThrust_ = 9.9; // Newtons
 
 
     private:
 
         void computeMotorSpeedCommand(void);
         void proceedState(void);
+        void resetState(void);
         void publishState(void);
 
         Uav_Imu imu_;
@@ -157,7 +163,6 @@ class Uav_Dynamics {
 
         /// @name UAV Dynamics Flags
         //@{
-        bool useAutoThrottle_ = false;
         bool includeDrag_ = true;
         bool hasCollided_ = false;
         bool ignoreCollisions_ = false;
@@ -183,11 +188,13 @@ class Uav_Dynamics {
         const double grav_ = 9.81; // m/s^2
         double thrustCoeff_ = 1.91e-6; // N/(rad/s)^2
         double torqueCoeff_ = 2.6e-7; // Nm/(rad/s)^2
-        double dragCoeff_ = 0.1; // N/(m/s)
+        double dragCoeff_ = 0.1; // N/(m/s)^2
         //@}
 
         /// @name State variables
         //@{
+        std::vector<double> initPose_;
+
         double position_[3]; // m
         double attitude_[4]; // quaternion [x,y,z,w]
         double angVelocity_[3] = {0.,0.,0.}; // rad/s

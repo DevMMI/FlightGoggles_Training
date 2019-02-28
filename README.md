@@ -1,3 +1,9 @@
+## to run data collection so far 
+$ roslaunch flightgoggles nimbus.launch
+$ python republish_colored_gates.py
+$ python data_collection_regime.py
+Then press a button on your joystick, that will start recording
+
 ## Notes
 https://github.com/mit-fast/FlightGoggles
 

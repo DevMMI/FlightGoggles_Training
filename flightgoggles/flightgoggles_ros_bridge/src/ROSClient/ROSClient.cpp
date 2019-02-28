@@ -22,24 +22,61 @@ ROSClient::ROSClient(ros::NodeHandle ns, ros::NodeHandle nhPrivate):
 
     // Wait for static transforms between imu/cameras.
     try{
-        imu_T_Camera_ = tfBuffer_.lookupTransform( "uav/camera/center", "uav/imu", ros::Time(0),
+        imu_T_Camera_ = tfBuffer_.lookupTransform( "uav/camera/left", "uav/imu", ros::Time(0),
                                                     ros::Duration(10.0));
-//        imu_T_Camera_ = tfBuffer_.lookupTransform(  "uav/imu", "uav/camera/center", ros::Time(0),
+//        imu_T_Camera_ = tfBuffer_.lookupTransform(  "uav/imu", "uav/camera/left", ros::Time(0),
 //                                                   ros::Duration(10.0));
     } catch (tf2::TransformException &ex) {
         ROS_WARN("Could NOT find required uav to camera transform: %s", ex.what());
         exit(1);
     }
 
+    if (!ros::param::get("/uav/flightgoggles_ros_bridge/render_stereo", render_stereo)) {
+        std::cout << "Did not get argument for render_stereo. Defaulting to false" << std::endl;
+    }
+
+    if (!ros::param::get("/uav/flightgoggles_ros_bridge/image_width", imageWidth_)) {
+        std::cout << "Did not get argument for image width. Defaulting to 1024 px" << std::endl;
+    }
+    if(imageWidth_ > 1024){
+        imageWidth_ = 1024;
+        std::cout << "Image width set to maximum value (1024 px)" << std::endl;
+    }
+
+    if (!ros::param::get("/uav/flightgoggles_ros_bridge/image_height", imageHeight_)) {
+        std::cout << "Did not get argument for image height. Defaulting to 768 px" << std::endl;
+    }
+    if(imageHeight_ > 768){
+        imageHeight_ = 768;
+        std::cout << "Image height set to maximum value (768 px)" << std::endl;
+    }
+
+    if (!ros::param::get("/uav/flightgoggles_ros_bridge/baseline", baseline_)) {
+        std::cout << "Did not get argument for baseline. Defaulting to 0.32 m" << std::endl;
+    }
+
+    if (!ros::param::get("/uav/flightgoggles_laser/rangefinder_max_range", lidarMaxRange_)) {
+        std::cout << "Did not get argument for rangefinder max range. Defaulting to 20 m" << std::endl;
+    }
+
+    if (!ros::param::get("/uav/flightgoggles_laser/rangefinder_variance", lidarVariance_)) {
+        std::cout << "Did not get argument for rangefinder variance. Defaulting to 0.009 m^2" << std::endl;
+    }
+
+
     // Load params
     populateRenderSettings();
 
     // init image publisher
     imagePubLeft_ = it_.advertiseCamera("/uav/camera/left/image_rect_color", 1);
-    //imagePubRight_ = it_.advertiseCamera("/uav/camera/right/image_rect_color", 1);
+    if(render_stereo) {
+        imagePubRight_ = it_.advertiseCamera("/uav/camera/right/image_rect_color", 1);
+    }
 
     // Collision publisher
     collisionPub_ = ns_.advertise<std_msgs::Empty>("/uav/collision", 1);
+
+    lidarPub_ = ns_.advertise<sensor_msgs::Range>("/uav/sensors/downward_laser_rangefinder", 1);
 
     // IR Marker publisher
     irMarkerPub_ = ns_.advertise<flightgoggles::IRMarkerArray>("/uav/camera/left/ir_beacons", 1);
@@ -49,69 +86,83 @@ ROSClient::ROSClient(ros::NodeHandle ns, ros::NodeHandle nhPrivate):
     tfSubscriber_ = ns_.subscribe("/tf", 1, &ROSClient::tfCallback, this);
 
     // Publish the estimated latency
-    fpsPublisher_ = ns_.advertise<std_msgs::Float32>("/uav/camera/debug/fps", 1);    
+    fpsPublisher_ = ns_.advertise<std_msgs::Float32>("/uav/camera/debug/fps", 1);
 
     // Subscribe to IR beacon locations
 //    irSubscriber_ = ns_.subscribe("/challenge/ir_BeaconsGroundTruth", 1, &ROSClient::irBeaconPointcloudCallback, this);
 }
 
-void ROSClient::populateRenderSettings(){
-  // Scene/Render settings
-  /*
-  Available scenes:
-  sceneFilename = "Butterfly_World";
-  sceneFilename = "FPS_Warehouse_Day";
-  sceneFilename = "FPS_Warehouse_Night";
-  sceneFilename = "Hazelwood_Loft_Full_Day";
-  sceneFilename = "Hazelwood_Loft_Full_Night";
+void ROSClient::populateRenderSettings() {
+    // Scene/Render settings
+    /*
+    Available scenes:
+    sceneFilename = "Butterfly_World";
+    sceneFilename = "FPS_Warehouse_Day";
+    sceneFilename = "FPS_Warehouse_Night";
+    sceneFilename = "Hazelwood_Loft_Full_Day";
+    sceneFilename = "Hazelwood_Loft_Full_Night";
 
-   // NEW for FlightGoggles v2.x.x
-   flightGoggles.state.sceneFilename = "Abandoned_Factory_Morning";
-   flightGoggles.state.sceneFilename = "Abandoned_Factory_Sunset";
-   */
+     // NEW for FlightGoggles v2.x.x
+     flightGoggles.state.sceneFilename = "Abandoned_Factory_Morning";
+     flightGoggles.state.sceneFilename = "Abandoned_Factory_Sunset";
+     */
 
-  flightGoggles.state.sceneFilename = "Abandoned_Factory_Morning";
-
+    flightGoggles.state.sceneFilename = "Abandoned_Factory_Morning";
+    flightGoggles.state.camWidth = imageWidth_;
+    flightGoggles.state.camHeight = imageHeight_;
 
     // Prepopulate metadata of cameras
-  unity_outgoing::Camera_t cam_RGB;
-  cam_RGB.ID = "Camera_RGB";
-  cam_RGB.channels = 3;
-  cam_RGB.isDepth = false;
-  cam_RGB.outputIndex = 0;
-  cam_RGB.hasCollisionCheck = true;
-  cam_RGB.doesLandmarkVisCheck = true;
+    unity_outgoing::Camera_t cam_RGB_left;
+    cam_RGB_left.ID = "Camera_RGB_left";
+    cam_RGB_left.channels = 3;
+    cam_RGB_left.isDepth = false;
+    cam_RGB_left.outputIndex = 0;
+    cam_RGB_left.hasCollisionCheck = true;
+    cam_RGB_left.doesLandmarkVisCheck = true;
+    // Add cameras to persistent state
+    flightGoggles.state.cameras.push_back(cam_RGB_left);
+    // set up the CameraInfo struct
+    cameraInfoLeft = {};
+    cameraInfoLeft.width = flightGoggles.state.camWidth;
+    cameraInfoLeft.height = flightGoggles.state.camHeight;
+    cameraInfoLeft.distortion_model = "plum_bob";
+    float f = (cameraInfoLeft.height / 2.0) / tan((M_PI * (flightGoggles.state.camFOV / 180.0)) / 2.0);
+    float cx = cameraInfoLeft.width / 2.0;
+    float cy = cameraInfoLeft.height / 2.0;
+    float tx = 0.0;
+    float ty = 0.0;
+    cameraInfoLeft.D = {0.0, 0.0, 0.0, 0.0, 0.0};
+    cameraInfoLeft.K = {f, 0.0, cx, 0.0, f, cy, 0.0, 0.0, 1.0};
+    cameraInfoLeft.R = {1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0};
+    cameraInfoLeft.P = {f, 0.0, cx, tx, 0.0, f, cy, ty, 0.0, 0.0, 1.0, 0.0};
 
-  // Add cameras to persistent state
-  flightGoggles.state.cameras.push_back(cam_RGB);
-  
-  // set up the CameraInfo struct
-  cameraInfo = {};
-  cameraInfo.width = flightGoggles.state.camWidth;
-  cameraInfo.height = flightGoggles.state.camHeight;
-  cameraInfo.distortion_model = "plum_bob";
-  float f = (cameraInfo.height/2.0)/tan((M_PI*(flightGoggles.state.camFOV/180.0))/2.0);
-  float cx = cameraInfo.width/2.0;
-  float cy = cameraInfo.height/2.0;
-  cameraInfo.D = {0.0, 0.0, 0.0, 0.0, 0.0};
-  cameraInfo.K = {f, 0.0, cx, 0.0, f, cy, 0.0, 0.0, 1.0};
-  cameraInfo.R = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-  cameraInfo.P = {f, 0.0, cx, 0, 0.0, f, cy, 0, 0.0, 0.0, 1.0, 0.0}; // elements Tx and Ty should be different for the second camera in a stereo pair. Here they are 0.
+    if (render_stereo) {
+        unity_outgoing::Camera_t cam_RGB_right;
+        cam_RGB_right.ID = "Camera_RGB_right";
+        cam_RGB_right.channels = 3;
+        cam_RGB_right.isDepth = false;
+        cam_RGB_right.outputIndex = 1;
+        cam_RGB_right.hasCollisionCheck = false;
+        cam_RGB_right.doesLandmarkVisCheck = false;
+
+        flightGoggles.state.cameras.push_back(cam_RGB_right);
+
+        cameraInfoRight = {};
+        cameraInfoRight.width = flightGoggles.state.camWidth;
+        cameraInfoRight.height = flightGoggles.state.camHeight;
+        cameraInfoRight.distortion_model = "plum_bob";
+        float f = (cameraInfoRight.height / 2.0) / tan((M_PI * (flightGoggles.state.camFOV / 180.0)) / 2.0);
+        float cx = cameraInfoRight.width / 2.0;
+        float cy = cameraInfoRight.height / 2.0;
+        float tx = -f * baseline_ ; // -fx' * B
+        float ty = 0.0;
+        cameraInfoRight.D = {0.0, 0.0, 0.0, 0.0, 0.0};
+        cameraInfoRight.K = {f, 0.0, cx, 0.0, f, cy, 0.0, 0.0, 1.0};
+        cameraInfoRight.R = {1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0};
+        cameraInfoRight.P = {f, 0.0, cx, tx, 0.0, f, cy, ty, 0.0, 0.0, 1.0,
+                            0.0};
+    }
 }
-
-
-Eigen::Affine3d create_rotation_matrix(double ax, double ay, double az) {
-  Eigen::Affine3d rx =
-      Eigen::Affine3d(Eigen::AngleAxisd(ax, Eigen::Vector3d(1, 0, 0)));
-  Eigen::Affine3d ry =
-      Eigen::Affine3d(Eigen::AngleAxisd(ay, Eigen::Vector3d(0, 1, 0)));
-  Eigen::Affine3d rz =
-      Eigen::Affine3d(Eigen::AngleAxisd(az, Eigen::Vector3d(0, 0, 1)));
-  return rz * ry * rx;
-}
- 
-bool first = true;
-Vector3d first_pos;
 // Subscribe to all TF messages to avoid lag.
 void ROSClient::tfCallback(tf2_msgs::TFMessage::Ptr msg){
     geometry_msgs::TransformStamped world_to_uav;
@@ -131,7 +182,7 @@ void ROSClient::tfCallback(tf2_msgs::TFMessage::Ptr msg){
     // Skip every other transform to get an update rate of 60hz
     if (numSimulationStepsSinceLastRender_ >= numSimulationStepsBeforeRenderRequest_){
 
-        Transform3 imu_pose_eigen = tf2::transformToEigen(world_to_uav.transform);
+        Transform3 imu_pose_eigen = tf2::transformToEigen(world_to_uav);
 //        Transform3 cam_pose_eigen;
         // Apply drone to camera transform
 //        tf2::doTransform(imu_pose_eigen, cam_pose_eigen, imu_T_Camera_);
@@ -139,9 +190,22 @@ void ROSClient::tfCallback(tf2_msgs::TFMessage::Ptr msg){
 //        std::cout << imu_pose_eigen.matrix() << std::endl;
 
         // Populate status message with new pose
-        flightGoggles.setCameraPoseUsingROSCoordinates(imu_pose_eigen, 0);
-//    flightGoggles.setCameraPoseUsingROSCoordinates(cam_pose_eigen, 1);
 
+        if (render_stereo) {
+
+            auto camLPose = imu_pose_eigen;
+            camLPose.translation()(1) += baseline_ / 2.0;
+
+            auto camRPose = imu_pose_eigen;
+            camRPose.translation()(1) -= baseline_ / 2.0;
+
+            flightGoggles.setCameraPoseUsingROSCoordinates(camLPose, 0);
+            flightGoggles.setCameraPoseUsingROSCoordinates(camRPose, 1);
+        }
+        else {
+            flightGoggles.setCameraPoseUsingROSCoordinates(imu_pose_eigen, 0);
+
+        }
         // Update timestamp of state message (needed to force FlightGoggles to rerender scene)
         flightGoggles.state.ntime = world_to_uav.header.stamp.toNSec();
         // request render
@@ -186,10 +250,24 @@ void imageConsumer(ROSClient *self){
         // Convert OpenCV image to image message
         sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", renderOutput.images[0]).toImageMsg();
         msg->header.stamp = imageTimestamp;
+        msg->header.frame_id = "/uav/camera/left";
         // Add Camera info message for camera
-        sensor_msgs::CameraInfoPtr cameraInfoMsgCopy(new sensor_msgs::CameraInfo(self->cameraInfo));
-        cameraInfoMsgCopy->header.stamp = imageTimestamp;
+        sensor_msgs::CameraInfoPtr cameraInfoMsgCopy(new sensor_msgs::CameraInfo(self->cameraInfoLeft));
+        cameraInfoMsgCopy->header.frame_id = "/uav/camera/left";
+	cameraInfoMsgCopy->header.stamp = imageTimestamp;
 	    self->imagePubLeft_.publish(msg, cameraInfoMsgCopy);
+
+	    if (self->render_stereo) {
+            sensor_msgs::ImagePtr msg_right = cv_bridge::CvImage(std_msgs::Header(), "bgr8",
+                                                                 renderOutput.images[1]).toImageMsg();
+            msg_right->header.stamp = imageTimestamp;
+            msg_right->header.frame_id = "/uav/camera/right";
+            // Add Camera info message for camera
+            sensor_msgs::CameraInfoPtr cameraInfoMsgCopy_Right(new sensor_msgs::CameraInfo(self->cameraInfoRight));
+            cameraInfoMsgCopy_Right->header.frame_id = "/uav/camera/right";
+            cameraInfoMsgCopy_Right->header.stamp = imageTimestamp;
+            self->imagePubRight_.publish(msg_right, cameraInfoMsgCopy_Right);
+        }
 
         // Check for camera collision
         if (renderOutput.renderMetadata.hasCameraCollision){
@@ -197,12 +275,25 @@ void imageConsumer(ROSClient *self){
             self->collisionPub_.publish(msg);
         }
 
+        // Publish lidar range finder message
+        sensor_msgs::Range lidarReturnMsg;
+        lidarReturnMsg.header.stamp = imageTimestamp;
+        lidarReturnMsg.header.frame_id = "/uav/imu";
+        lidarReturnMsg.radiation_type = lidarReturnMsg.INFRARED;
+        lidarReturnMsg.field_of_view = 0;
+        lidarReturnMsg.min_range = -1.0f*self->lidarMaxRange_;
+        lidarReturnMsg.max_range = 0;
+        // Add noise to lidar reading if reading is valid.
+        // Make reading negative since the distance is in the -Z direction in '/uav/imu' frame.
+        lidarReturnMsg.range = static_cast<float>(-1.0f * (renderOutput.renderMetadata.lidarReturn + sqrt(self->lidarVariance_) * self->standardNormalDistribution_(self->randomNumberGenerator_)));
+
+        self->lidarPub_.publish(lidarReturnMsg);
+
         // Publish IR marker locations visible from FlightGoggles.
         flightgoggles::IRMarkerArray visiblePoints;
         visiblePoints.header.stamp = imageTimestamp;
 
         for (const unity_incoming::Landmark_t landmark : renderOutput.renderMetadata.landmarksInView){
-//            std::cout << landmark.ID << std::endl;
 
             // Create marker msg
             flightgoggles::IRMarker marker;
@@ -243,7 +334,7 @@ int main(int argc, char **argv) {
 
     ros::NodeHandle ns;
     ros::NodeHandle ns_private("flightgoggles_ros_bridge");
-    
+
     // Create client
     ROSClient client(ns, ns_private);
 

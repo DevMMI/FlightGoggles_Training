@@ -39,15 +39,12 @@ Uav_Dynamics::Uav_Dynamics(ros::NodeHandle nh):
 // Node handle
 node_(nh),
 // TF listener
-tfListener_(tfBuffer_)
+tfListener_(tfBuffer_),
+// Initial pose vector
+initPose_(7,0)
 {
+
   // boost::shared_ptr<geometry_msgs::Pose const> initialPose = ros::topic::waitForMessage<geometry_msgs::Pose>("challenge/randStartPos");
-
-  if (!ros::param::get("/uav/flightgoggles_uav_dynamics/clockscale", clockScale)) {
-    std::cout << "Did not get a clock scaling value. Defaulting to realtime 1.0x" << std::endl;
-  }
-
-
   //  Populate params
   if (!ros::param::get("/uav/flightgoggles_uav_dynamics/ignore_collisions", ignoreCollisions_)){
       std::cout << "could not get param" << std::endl;
@@ -101,21 +98,38 @@ tfListener_(tfBuffer_)
       std::cout << "Did not get the linear process noise from the params, defaulting to 0.0005 m^2/s^3" << std::endl;
   }
 
-  if (!ros::param::get("/use_sim_time", useSimTime_)) {}
+  if (!ros::param::get("/uav/flightgoggles_uav_dynamics/reset_timeout", resetTimeout_)) {
+      std::cout << "Did not value for reset timeout from the params, defaulting to 0.1 sec" << std::endl;
+  }
 
-  std::vector<double> initPose(7,0);
-  if (!ros::param::get("/uav/flightgoggles_uav_dynamics/init_pose", initPose)) {
+  if (!ros::param::get("/uav/flightgoggles_uav_dynamics/min_arming_thrust", minArmingThrust_)) {
+    std::cout << "Did not value for minimum arming thrust from the params, defaulting to 9.9 N" << std::endl;
+  }
+
+  if (!ros::param::get("/use_sim_time", useSimTime_)) {
+      std::cout << "Did not get bool useSimTime_ from the params, defaulting to false" << std::endl;
+  }
+
+  // Only enable clock scaling when simtime is enabled.
+  if (useSimTime_) {
+    if (!ros::param::get("/uav/flightgoggles_uav_dynamics/clockscale", clockScale)) {
+      std::cout << "Using sim_time and did not get a clock scaling value. Defaulting to automatic clock scaling." << std::endl;
+      useAutomaticClockscale_ = true;
+    }
+  }
+
+  if (!ros::param::get("/uav/flightgoggles_uav_dynamics/init_pose", initPose_)) {
     // Start a few meters above the ground.
     std::cout << "Did NOT find initial pose from param file" << std::endl;
 
-     initPose.at(2) = 1.5;
-     initPose.at(6) = 1.0;
+     initPose_.at(2) = 1.5;
+     initPose_.at(6) = 1.0;
   }
 
   std::cout << "Ignore collisions: " << ignoreCollisions_ << std::endl;
 
   std::cout << "Initial pose: ";
-  for (auto i : initPose){
+  for (double i : initPose_){
     std::cout << i << " ";
   }
   std::cout << std::endl;
@@ -126,25 +140,23 @@ tfListener_(tfBuffer_)
 //  initialPose.position.z = 1.0f;
 //  initialPose.position.y = 2.0f;
 
-  position_[0] = initPose.at(0);
-  position_[1] = initPose.at(1);
-  position_[2] = initPose.at(2);
+  position_[0] = initPose_.at(0);
+  position_[1] = initPose_.at(1);
+  position_[2] = initPose_.at(2);
 
-  attitude_[0] = initPose.at(3);
-  attitude_[1] = initPose.at(4);
-  attitude_[2] = initPose.at(5);
-  attitude_[3] = initPose.at(6);
+  attitude_[0] = initPose_.at(3);
+  attitude_[1] = initPose_.at(4);
+  attitude_[2] = initPose_.at(5);
+  attitude_[3] = initPose_.at(6);
 
   for (size_t i = 0; i<4; i++){
     propSpeed_[i] = sqrt(vehicleMass_/4.*grav_/thrustCoeff_);
   }
 
-  lpf_.lastUpdateTime_ = currentTime_;
-  pid_.lastUpdateTime_ = currentTime_;
-  std::cout<<"reached"<<std::endl;
-
-  // Init subscribers and publishers
-  imuPub_ = node_.advertise<sensor_msgs::Imu>("/sensors/imu", 1);
+  ////////////////// Init subscribers and publishers
+  // Allow for up to 100ms sim time buffer of outgoing IMU messages.
+  // This should improve IMU integration methods on slow client nodes (see issue #63).
+  imuPub_ = node_.advertise<sensor_msgs::Imu>("/uav/sensors/imu", 96);
   inputCommandSub_ = node_.subscribe("/uav/input/rateThrust", 1, &Uav_Dynamics::inputCallback, this);
   collisionSub_ = node_.subscribe("/uav/collision", 1, &Uav_Dynamics::collisionCallback, this);
   frameRateSub_ = node_.subscribe("/uav/camera/debug/fps", 1, &Uav_Dynamics::fpsCallback, this);
@@ -152,9 +164,16 @@ tfListener_(tfBuffer_)
   new_pos_init_sub = node_.subscribe("/new_pos_init", 1, &Uav_Dynamics::newPosInitCallback, this);
   std::cout << "created new pos init"<<std::endl;
 
-  clockPub_ = node_.advertise<rosgraph_msgs::Clock>("/clock",1);
+  if (useSimTime_) {
+    clockPub_ = node_.advertise<rosgraph_msgs::Clock>("/clock",1);
+    clockPub_.publish(currentTime_);
+  } else {
+    // Get the current time if we are using wall time. Otherwise, use 0 as initial clock.
+    currentTime_ = ros::Time::now();
+  }
 
-  clockPub_.publish(currentTime_);
+  timeLastReset_ = currentTime_;
+
   // Init main simulation loop at 2x framerate.
   simulationLoopTimer_ = node_.createWallTimer(ros::WallDuration(dt_secs/clockScale), &Uav_Dynamics::simulationLoopTimerCallback, this);
   simulationLoopTimer_.start();
@@ -189,35 +208,44 @@ void Uav_Dynamics::fpsCallback(std_msgs::Float32::Ptr msg) {
  */
 void Uav_Dynamics::simulationLoopTimerCallback(const ros::WallTimerEvent& event){
   // Step the time forward
-  currentTime_ += ros::Duration(dt_secs);
-  clockPub_.publish(currentTime_);
-  //std::cout << currentTime_ << lastUpdateTime_ << std::endl;
-
-
-  if(!lastCommandMsg_) return;
+  if (useSimTime_){
+    currentTime_ += ros::Duration(dt_secs);
+    clockPub_.publish(currentTime_);
+  } else {
+      ros::Time loopStartTime = ros::Time::now();
+      dt_secs = (loopStartTime - currentTime_).toSec();
+      currentTime_ = loopStartTime;
+  }
 
   if(hasCollided_ && !ignoreCollisions_){
-    simulationLoopTimer_.stop();
+    lpf_.resetState();
+    pid_.resetState();
+    resetState();
+    hasCollided_ = false;
+    armed_= false;
+    timeLastReset_ = currentTime_;
     return;
   }
 
+  // Only propagate simulation after have received input message
   if (armed_) {
 
-    lpf_.proceedState(imuMeasurement_.angular_velocity, currentTime_);
+    lpf_.proceedState(imuMeasurement_.angular_velocity, dt_secs);
 
     pid_.controlUpdate(lastCommandMsg_->angular_rates, lpf_.filterState_,
-                       lpf_.filterStateDer_, angAccCommand_, currentTime_);
-
+                       lpf_.filterStateDer_, angAccCommand_, dt_secs);
     computeMotorSpeedCommand();
     proceedState();
     imu_.getMeasurement(imuMeasurement_, angVelocity_, specificForceBodyFrame_, currentTime_);
     imuPub_.publish(imuMeasurement_);
   }
 
+
   publishState();
 
-  if (actualFps != -1 && actualFps < 1e3 && useSimTime_) {
-     clockScale =  (actualFps / 58.0);
+  // Update clockscale if necessary
+  if (actualFps != -1 && actualFps < 1e3 && useSimTime_ && useAutomaticClockscale_) {
+     clockScale =  (actualFps / 55.0);
      simulationLoopTimer_.stop();
      simulationLoopTimer_.setPeriod(ros::WallDuration(dt_secs / clockScale));
      simulationLoopTimer_.start();
@@ -230,8 +258,8 @@ void Uav_Dynamics::simulationLoopTimerCallback(const ros::WallTimerEvent& event)
  */
 void Uav_Dynamics::inputCallback(mav_msgs::RateThrust::Ptr msg){
 	lastCommandMsg_ = msg;
-	if (!armed_) {
-		if (msg->thrust.z >= (1.1 * vehicleMass_ * grav_))
+	if (!armed_ && ((currentTime_.toSec() - timeLastReset_.toSec()) > resetTimeout_)) {
+		if (msg->thrust.z >= (minArmingThrust_))
 			armed_ = true;
 	}
 }
@@ -284,10 +312,10 @@ void Uav_Dynamics::proceedState(void){
   velocity_[2] -= dt_secs*grav_;
 
   double attitudeDer[4];
-  attitudeDer[0] = angVelocity_[0]*attitude_[3] + angVelocity_[2]*attitude_[1] - angVelocity_[1]*attitude_[2];
-  attitudeDer[1] = angVelocity_[1]*attitude_[3] - angVelocity_[2]*attitude_[0] + angVelocity_[0]*attitude_[2];
-  attitudeDer[2] = angVelocity_[2]*attitude_[3] + angVelocity_[1]*attitude_[0] - angVelocity_[0]*attitude_[1];
-  attitudeDer[3] = -angVelocity_[0]*attitude_[0] - angVelocity_[1]*attitude_[1] - angVelocity_[2]*attitude_[2];
+  attitudeDer[0] = 0.5*(angVelocity_[0]*attitude_[3] + angVelocity_[2]*attitude_[1] - angVelocity_[1]*attitude_[2]);
+  attitudeDer[1] = 0.5*(angVelocity_[1]*attitude_[3] - angVelocity_[2]*attitude_[0] + angVelocity_[0]*attitude_[2]);
+  attitudeDer[2] = 0.5*(angVelocity_[2]*attitude_[3] + angVelocity_[1]*attitude_[0] - angVelocity_[0]*attitude_[1]);
+  attitudeDer[3] = 0.5*(-angVelocity_[0]*attitude_[0] - angVelocity_[1]*attitude_[1] - angVelocity_[2]*attitude_[2]);
 
   for(size_t i = 0; i < 4; i++)
     attitude_[i] += dt_secs*attitudeDer[i];
@@ -379,16 +407,37 @@ void Uav_Dynamics::proceedState(void){
 }
 
 /**
+ * resetState reset state to initial
+ */
+void Uav_Dynamics::resetState(void){
+  position_[0] = initPose_.at(0);
+  position_[1] = initPose_.at(1);
+  position_[2] = initPose_.at(2);
+
+  attitude_[0] = initPose_.at(3);
+  attitude_[1] = initPose_.at(4);
+  attitude_[2] = initPose_.at(5);
+  attitude_[3] = initPose_.at(6);
+
+  for (size_t i = 0; i<3; i++){
+    angVelocity_[i] = 0.;
+    velocity_[i] = 0.;
+    specificForce_[i] = 0.;
+    propSpeed_[i] = sqrt(vehicleMass_/4.*grav_/thrustCoeff_);
+  }
+  propSpeed_[3] = sqrt(vehicleMass_/4.*grav_/thrustCoeff_);
+
+  specificForce_[2] = 9.81;
+}
+
+/**
  * publishState publishes state transform message
  */
 void Uav_Dynamics::publishState(void){
-  static uint32_t seq = 0;
-
   geometry_msgs::TransformStamped transform;
 
   transform.header.stamp = currentTime_;
   transform.header.frame_id = "world";
-  transform.header.seq = ++seq;
 
   transform.transform.translation.x = position_[0];
   transform.transform.translation.y = position_[1];
@@ -477,26 +526,31 @@ Uav_LowPassFilter::Uav_LowPassFilter(){
 /**
  * proceedState propagates the state
  * @param value
- * @param currTime
+ * @param dt
  */
-void Uav_LowPassFilter::proceedState(geometry_msgs::Vector3 & value, ros::Time currTime){
-  ros::Duration dt = currTime - lastUpdateTime_;
-  double dt_secs = dt.toSec();
-
+void Uav_LowPassFilter::proceedState(geometry_msgs::Vector3 & value, double dt){
   double input[] = {value.x, value.y, value.z};
 
-  double det = gainP_ * dt_secs * dt_secs + gainQ_ * dt_secs + 1.;
+  double det = gainP_ * dt * dt + gainQ_ * dt + 1.;
   double stateDer;
   for (size_t ind = 0; ind < 3; ind++) {
-    stateDer = (filterStateDer_[ind] + gainP_ * dt_secs * input[ind]) / det -
-               (dt_secs * gainP_ * filterState_[ind]) / det;
+    stateDer = (filterStateDer_[ind] + gainP_ * dt * input[ind]) / det -
+               (dt * gainP_ * filterState_[ind]) / det;
     filterState_[ind] =
-        (dt_secs * (filterStateDer_[ind] + gainP_ * dt_secs * input[ind])) / det +
-        ((dt_secs * gainQ_ + 1.) * filterState_[ind]) / det;
+        (dt * (filterStateDer_[ind] + gainP_ * dt * input[ind])) / det +
+        ((dt * gainQ_ + 1.) * filterState_[ind]) / det;
     filterStateDer_[ind] = stateDer;
   }
+}
 
-  lastUpdateTime_ = currTime;
+/**
+ * resetState resets the state
+ */
+void Uav_LowPassFilter::resetState(void){
+  for (size_t ind = 0; ind < 3; ind++) {
+    filterState_[ind] = 0.;
+    filterStateDer_[ind] = 0.;
+  }
 }
 
 /**
@@ -558,21 +612,26 @@ Uav_Pid::Uav_Pid(){
  * @param curval
  * @param curder
  * @param out
- * @param currTime
+ * @param dt
  */
 void Uav_Pid::controlUpdate(geometry_msgs::Vector3 & command, double * curval,
-                      double * curder, double * out, ros::Time currTime){
-  ros::Duration dt = currTime - lastUpdateTime_;
-  double dt_secs = dt.toSec();
+                      double * curder, double * out, double dt){
 
   double stateDev[] = {command.x-curval[0], command.y-curval[1], command.z-curval[2]};
 
   for (size_t ind = 0; ind < 3; ind++) {
-    intState_[ind] += dt_secs * stateDev[ind];
+    intState_[ind] += dt * stateDev[ind];
     intState_[ind] = fmin(fmax(-intBound_[ind],intState_[ind]),intBound_[ind]);
     out[ind] = propGain_[ind] * stateDev[ind] +
                intGain_[ind] * intState_[ind] + derGain_[ind] * -curder[ind];
   }
+}
 
-  lastUpdateTime_ = currTime;
+/**
+ * resetState
+ */
+void Uav_Pid::resetState(void){
+  for (size_t ind = 0; ind < 3; ind++) {
+    intState_[ind] = 0.;
+  }
 }

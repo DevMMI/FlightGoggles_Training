@@ -12,10 +12,7 @@ namespace teleop = universal_teleop;
 
 // Assumes 1KG drone.
 const double idleThrust = 1.0f*9.81f;
-double current_thrust = 0.0;
-double thrust_increase_scale = 0.5;
-double thrust_degrade_rate = 0.3;
-bool first_override = false;
+
 teleop::Teleop::Teleop(void) : n(), n_private("universal_teleop"), key_override_enabled(false), joy_override_enabled(false)
 {
 
@@ -99,11 +96,12 @@ void teleop::Teleop::process_event(const teleop::Event& e)
 
 void teleop::Teleop::joystick_event(const sensor_msgs::Joy::ConstPtr& joy)
 {
+  //ROS_ERROR_STREAM("joy "<<joy);
   if (last_joy_msg.axes.empty()) {
     last_joy_msg = *joy;
     for (auto& b : last_joy_msg.buttons) b = 0;
   }
-  //printf("buttons %d \n", joy->buttons.size());
+
   // process buttons
   for (uint32_t b = 0; b < joy->buttons.size(); b++) {
     if (joy->buttons[b] != last_joy_msg.buttons[b]) {
@@ -129,7 +127,7 @@ void teleop::Teleop::joystick_event(const sensor_msgs::Joy::ConstPtr& joy)
       else {
         c.value = joy->axes[a];
       }
-
+      c.header.stamp = ros::Time::now();
       pub_control.publish(c);
     }
   }
@@ -197,20 +195,16 @@ void teleop::Teleop::control(void)
     mav_msgs::RateThrust msg;
     msg.header.frame_id = "uav/imu";
     msg.header.stamp = ros::Time::now();
+
   // Default thrust command to idle thrust"
   msg.thrust.z = (double) idleThrust;
-  if(joy_override_enabled)
-    first_override = true;
-  if (joy_override_enabled || first_override) {
+
+  if (joy_override_enabled) {
     if (last_joy_msg.axes.empty()) return;
 
-    // yaw and pitch on same axis
-    float pitch = -last_joy_msg.axes[joy_axes["pitch"]];
-
+    float pitch = last_joy_msg.axes[joy_axes["pitch"]];
     float roll = -last_joy_msg.axes[joy_axes["roll"]];
-
     float yaw = last_joy_msg.axes[joy_axes["yaw"]];
-
     float vertical = last_joy_msg.axes[joy_axes["vertical"]];
 
     /* check deadzones */
@@ -219,24 +213,10 @@ void teleop::Teleop::control(void)
 //    if (std::abs(roll) < joy_deadzones["roll"]) roll = 0;
 //    if (std::abs(vertical) < joy_deadzones["vertical"]) vertical = 0;
 
-    msg.angular_rates.y = std::pow(pitch,3.0f) * 0.3 *axis_scales["pitch"];
-    msg.angular_rates.x = std::pow(roll, 3.0f) * 0.3 * axis_scales["roll"];
-    msg.angular_rates.z = std::pow(yaw,3.0f) * 0.3 * axis_scales["yaw"];
-    msg.thrust.z = std::pow(vertical, 3.0f) * 0.3 * axis_scales["vertical"] + idleThrust;
-
-    // if(last_joy_msg.buttons[6]){
-    //   // decrease thrust
-    //   current_thrust = current_thrust - thrust_increase_scale;
-    //
-    // }
-    // else if (last_joy_msg.buttons[7]){
-    //   // increase thrust
-    //   current_thrust = current_thrust + thrust_increase_scale;
-    // }
-    // else{
-    //   current_thrust = current_thrust - thrust_degrade_rate;
-    // }
-    //  msg.thrust.z = min(15.0, current_thrust + idleThrust); //+ last_joy_msg.thrust_increase_scale
+    msg.angular_rates.y = std::pow(pitch,3.0f) * axis_scales["pitch"];
+    msg.angular_rates.x = std::pow(roll, 3.0f) * axis_scales["roll"];
+    msg.angular_rates.z = std::pow(yaw,3.0f) * axis_scales["yaw"];
+    msg.thrust.z = std::pow(vertical, 3.0f) * axis_scales["vertical"] + idleThrust;
 
   }
   else if (key_override_enabled) {

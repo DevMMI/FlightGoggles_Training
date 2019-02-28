@@ -1,9 +1,8 @@
 <launch>
   <arg name="use_external_renderer" default="0" />
   <arg name="ignore_collisions" default="false" />
-  <arg name="render_stereo" default="0" />
-  <arg name="level" default="hard"/>
-  <env name="CWD" value="$(env PWD)" />
+  <arg name="render_stereo" default="1" />
+
   <group ns="/control_nodes">
     <!-- Start human teleoperation nodes -->
     <node name="joy" pkg="joy" type="joy_node"/>
@@ -25,25 +24,21 @@
     <arg name="ignore_collisions" value="$(arg ignore_collisions)"/>
   </include>
 
-  <node name="reporter" pkg="flightgoggles_reporter" type="reporter.py" output="screen" cwd='node'/>
   <!-- Launch override settings. Must be placed at end of file to override params set in core launchfile. -->
 
   <!--For teleoperation, run dynamics in real time-->
-  <param name="/use_sim_time" value="true" />
+  <param name="/use_sim_time" value="false" />
 
-  <group ns="/uav" if="$(eval level == 'easy')">
-      <rosparam command="load" file="$(find flightgoggles)/config/challenges/gate_locations.yaml"/>
-      <rosparam command="load" file="$(find flightgoggles)/config/challenges/challenge_easy.yaml"/>
-  </group>
-
-  <group ns="/uav" if="$(eval level == 'medium')">
-      <rosparam command="load" file="$(find flightgoggles)/config/challenges/gate_locations.yaml"/>
-      <rosparam command="load" file="$(find flightgoggles)/config/challenges/challenge_medium.yaml"/>
-  </group>
-
-  <group ns="/uav" if="$(eval level == 'hard')">
-      <rosparam command="load" file="$(find flightgoggles)/config/challenges/gate_locations_24.yaml"/>
-      <rosparam command="load" file="$(find flightgoggles)/config/challenges/challenge_final.yaml"/>
+  <group ns="/uav/camera/">
+     <node name="stereo_image_proc" type="stereo_image_proc" pkg="stereo_image_proc" output="screen">
+       <remap from="left/image_raw" to="left/image_rect_color"/>
+       <remap from="right/image_raw" to="right/image_rect_color"/>
+       <param name="min_disparity" value="10"/>
+       <param name="texture_threshold" value="1"/>
+       <param name="speckle_range" value="2"/>
+       <param name="uniqueness_ratio" value="10.0"/>
+       <param name="prefilter_cap" value="5.0"/>
+     </node>
   </group>
 
 </launch>
