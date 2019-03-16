@@ -1,0 +1,2 @@
+rm images/*
+rm labels/*

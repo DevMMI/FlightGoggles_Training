@@ -34,5 +34,11 @@
 
   <!--For teleoperation, run dynamics in real time -->
   <param name="/use_sim_time" value="true" /> 
- 
+
+  <group ns="/uav">
+<rosparam command="load" file="$(find flightgoggles)/config/challenges/nimbus_load.yaml"/>
+  </group>
+
+
+
 </launch>

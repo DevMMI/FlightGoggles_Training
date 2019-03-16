@@ -31,7 +31,6 @@ control_msgs = {}
 
 class ControlStamp:
     def __init__(self, time=-1.0, id=-1):
-        """ Create two points that make up a pixel """
         self.time = time
         self.id = id
 
@@ -127,7 +126,11 @@ def signal_handler(sig, frame):
     # total /= float(len(avg_time_between_images))
     #
     # print("avg time between frames {}".format(total))
+    print("clearing")
+    empty_vals()
+    #time.sleep(3)
     print('\n Bye bye!')
+    sys.stdout.flush()
     sys.exit(0)
 
 
@@ -170,7 +173,7 @@ def callback(image_data_l, image_data_r, tf_data, lidar_data, imu_data):
     avg_time = time1 + time2 + time3 + time4 + time5
     avg_time /= 5.0
 
-    print("avg time {}".format(avg_time))
+    #print("avg time {}".format(avg_time))
     avg_time_between_images.append(float(avg_time))
 
     global gates_iterator
@@ -252,6 +255,53 @@ def getControlDict(val):
     )
     return data
 
+def empty_vals():
+    print("hitting")
+    global labels_dir
+    global control_msgs
+    global label_storage
+    #print("labels stored {}\n, control msgs stored {}\n\n".format(len(label_storage), len(control_msgs)))
+
+    if len(label_storage) == 0:
+        return
+
+    post_time = 0.0164 # calculated by average time between subsequent images
+    labels_to_be_written = {}
+    #found_series = False
+    label_storage_cp = dict(label_storage)
+    control_msgs_cp = dict(control_msgs)
+    # use these instead of the real things so they dont change size while we're operating on them
+    print("going through {} labels ".format(len(label_storage)))
+    for key_l, val_l in label_storage_cp.iteritems():
+        label_time = key_l.time
+        label_id = key_l.id
+        control_msgs_cp = dict(control_msgs) # update so we lose the control messages that are taken
+        control_msgs_iter = 0
+        for key, val in control_msgs_cp.iteritems():
+            #print("key {}, label_time {}".format(key, label_time))
+            if(key < label_time):
+                # control msgs that are before this label
+                del control_msgs[key]
+            if(key > label_time):
+                # control msgs after this label
+                if(key - label_time < post_time):
+                    # add it to label as rightful control message
+                    #print("key {}".format(key))
+                    label_storage[key_l]["control{}".format(control_msgs_iter)] = getControlDict(val)
+                    control_msgs_iter+=1
+                    del control_msgs[key]
+                else:
+                    # have reached point
+                    break
+
+        label_name = "label{}".format(label_id) + ".txt"
+        output_dir = os.path.join(labels_dir, label_name)
+        print("empty writing {}".format(output_dir))
+        with open(output_dir, 'w') as outfile:
+            yaml.dump(label_storage[key_l], outfile, default_flow_style=False)
+        # removing written label from storage
+        del label_storage[key_l]
+
 def dual_callback(event):
     # match control messages and labels that have similar time stamps
     #control_msgs[double]
@@ -261,25 +311,30 @@ def dual_callback(event):
     global labels_dir
     global control_msgs
     global label_storage
-    print("labels stored {}, control msgs stored {}".format(len(label_storage), len(control_msgs)))
+    #print("labels stored {}\n, control msgs stored {}\n\n".format(len(label_storage), len(control_msgs)))
+
+    if len(control_msgs) == 0 or len(label_storage) == 0:
+        return
 
     post_time = 0.0164 # calculated by average time between subsequent images
     labels_to_be_written = {}
     #found_series = False
-    label_storage_cp = label_storage
-    control_msgs_cp = control_msgs
+    label_storage_cp = dict(label_storage)
+    control_msgs_cp = dict(control_msgs)
     # use these instead of the real things so they dont change size while we're operating on them
-    for key_l, val_l in label_storage.iteritems():
+    for key_l, val_l in label_storage_cp.iteritems():
         label_time = key_l.time
         label_id = key_l.id
-        for key, val in control_msgs.iteritems():
+        control_msgs_cp = dict(control_msgs) # update so we lose the control messages that are taken
+        for key, val in control_msgs_cp.iteritems():
+            #print("key {}, label_time {}".format(key, label_time))
             if(key < label_time):
-                print("Deleting old control msg t: {}\n\n".format(key))
                 del control_msgs[key]
             if(key > label_time):
                 if(key - label_time < post_time):
                     # add it to label as rightful control message
-                    val_l[control] = getControlDict(val)
+                    #print("key {}".format(key))
+                    label_storage[key_l]["control"] = getControlDict(val)
                     del control_msgs[key]
                     break
                 else:
@@ -288,8 +343,7 @@ def dual_callback(event):
         label_name = "label{}".format(label_id) + ".txt"
         output_dir = os.path.join(labels_dir, label_name)
         with open(output_dir, 'w') as outfile:
-            yaml.dump(val_l, outfile, default_flow_style=False)
-        print("writing")
+            yaml.dump(label_storage[key_l], outfile, default_flow_style=False)
         # removing written label from storage
         del label_storage[key_l]
         #print("writing label")
@@ -311,6 +365,7 @@ def main():
 
     ## main data generation loop ##
 
+    # get current number that images and labels are at
     fc = open(gates_it_name)
     gates_iterator = int(fc.read().replace('\n',''))
     fc.close()
