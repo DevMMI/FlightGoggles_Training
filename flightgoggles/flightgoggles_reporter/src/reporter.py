@@ -11,9 +11,8 @@ import math
 import numpy as np
 import yaml
 import signal
-from std_msgs.msg import Empty, Bool
-
-pub = rospy.Publisher("/uav/complete", Bool, queue_size=10)
+from std_msgs.msg import Empty
+from sensor_msgs.msg import Imu
 
 class Gate():
 	## Constructor for class gate
@@ -21,8 +20,8 @@ class Gate():
 	# @param: inflation: Artificial inflation of gate to test for fly through
 	def __init__(self, location, inflation):
 		self.location = np.asarray(location)
-		self.planeEquation = self.getPlaneOfGate()		
-		
+		self.planeEquation = self.getPlaneOfGate()
+
 		minLoc = np.amin (self.location, axis=0)
 		maxLoc = np.amax (self.location, axis=0)
 		self.xmin = minLoc[0] - inflation
@@ -72,18 +71,19 @@ class Gate():
 		return False
 
 
+
 class ReporterNode():
 	## Constructor for the ReporterNode
 	def __init__(self):
 
 		nextEventId = 0
 		eventTol    = 1.0
-
+		self.startTime = -1
 		rate = 150.
-		
+
 		# Log the event data for output
 		self.eventLogData = {}
-		
+
 		# Setup a TF listener to listen for the drone pose in world
 		listener = tf.TransformListener()
 
@@ -95,7 +95,6 @@ class ReporterNode():
 		name=rospy.get_param('/uav/challenge_name', '')
 		if (name == ''):
 			rospy.logerr("Challenge name could not be read")
-			pub.publish(0)
 			rospy.signal_shutdown("Challenge parameter [name] could not be read")
 
 		rospy.loginfo("Running challenge %s", name)
@@ -104,9 +103,7 @@ class ReporterNode():
 		timeout = rospy.get_param('/uav/timeout', -1)
 		if (timeout == -1):
 			rospy.logerr("Timeout not specified!")
-			pub.publish(0)
 			rospy.signal_shutdown("Challenge parameter [timeout] could not be read")
-		rospy.Timer(rospy.Duration(timeout), self.timerCallback)
 
 		rospy.Subscriber("/uav/collision", Empty, self.collisionCallback)
 
@@ -124,16 +121,20 @@ class ReporterNode():
 			loc = np.asarray(rospy.get_param("/uav/%s/location"%e, "[]"))
 			if (loc.shape[0] !=4 or loc.shape[1] != 3):
 				rospy.logerr("Location not specified in correct format")
-				pub.publish(0)
 				rospy.signal_shutdown("Location not specified in correct format")
 			gates.append(Gate(loc, inflation))
 
-		time_start = rospy.Time.now().to_sec()
+		imuSub = rospy.Subscriber("/uav/sensors/imu", Imu, self.imuCallback)
+		while (self.startTime == -1):
+			pass
+		imuSub.unregister()
+		time_start = self.startTime
+		rospy.Timer(rospy.Duration(timeout), self.timerCallback)
 		while not rospy.is_shutdown():
 			# Get the transformation of the drone in the world
 			try:
 				(trans,rot) =  listener.lookupTransform('/world','/uav/imu', rospy.Time(0))
-			except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException): 
+			except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
 				continue
 
 			# check if we have passed any gate in our future objectives, if so we have to count missed gates
@@ -144,24 +145,24 @@ class ReporterNode():
 						for it in range(i):
 							self.eventLogData["Gate%d"%(nextEventId+it)]=dict(Name=events[nextEventId+it], Success="False")
 					rospy.loginfo("Reached event %s at %f", events[nextEventId+i], rospy.Time.now().to_sec() - time_start)
-					self.eventLogData["Gate%d"%(nextEventId+i)] = dict(Time=rospy.Time.now().to_sec() - time_start, Location=trans, Name=events[nextEventId+i], Success="True")	
+					self.eventLogData["Gate%d"%(nextEventId+i)] = dict(Time=rospy.Time.now().to_sec() - time_start, Location=trans, Name=events[nextEventId+i], Success="True")
 					nextEventId +=(i+1)
-				
+
 				if nextEventId >= len(events):
 					self.eventLogData["Result"]="Challenge Completed"
 					self.writeLog()
 					rospy.loginfo("Completed the challenge")
-					pub.publish(1)
 					rospy.signal_shutdown("Challenge complete")
 
-			rospy.Rate(rate)
 			rospy.sleep(1./rate)
+
+	def imuCallback(self,data):
+		self.startTime=data.header.stamp.to_sec()
 
 	## @brief timerCallback callback for elapsed timer to enable the reporter to timeout
 	# @param self the object pointer
 	# @param event timer event
 	def timerCallback(self, event):
-		pub.publish(0)
 		self.eventLogData["Result"] = "Timed out"
 		rospy.loginfo("The challenge timed out!")
 		self.writeLog()
@@ -177,7 +178,6 @@ class ReporterNode():
 	# @param self The object pointer
 	# @param data The collision message
 	def collisionCallback(self, data):
-		pub.publish(0)
 		self.eventLogData["Result"]="Collision"
 		rospy.loginfo("The drone collided!")
 		self.writeLog()
@@ -185,8 +185,7 @@ class ReporterNode():
 
 	## @brief signalHandler to handle the reporter being interrupted by SIGINT
 	def signalHandler(self, sig, frame):
-		pub.publish(0)
-		self.eventLogData["Result"]="Interrupted" 
+		self.eventLogData["Result"]="Interrupted"
 		self.writeLog()
 		rospy.loginfo("Grading was interrupted")
 		rospy.signal_shutdown("Grading was interrupted")
@@ -196,6 +195,4 @@ if __name__ == '__main__':
 
 	try:
 		ne = ReporterNode()
-	except rospy.ROSInterruptException: pass
-
- 
+except rospy.ROSInterruptException: pass
