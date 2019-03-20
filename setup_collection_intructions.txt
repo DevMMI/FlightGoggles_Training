@@ -1,0 +1,8 @@
+rostopic pub /respawn std_msgs/Int32 '{data: 1}' -r 10 # run to respawn to new point
+rostopic pub /restart std_msgs/Int32 '{data: 1}' # run to allow respawn between trials
+
+rosrun flightgoggles FlightGoggles.x86_64
+roslaunch flightgoggles nimbus.launch
+python republish_colored_gates.py
+python data_collection_regimen.py # run for data collection, starts when you touch joystick
+ python clear_out.py # run to clear out last trial

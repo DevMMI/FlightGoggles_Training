@@ -7,6 +7,7 @@
  */
 
 #include "flightgoggles_uav_dynamics_node.hpp"
+#include <tf/transform_datatypes.h>
 
 int main(int argc, char **argv)
 {
@@ -162,7 +163,9 @@ initPose_(7,0)
   frameRateSub_ = node_.subscribe("/uav/camera/debug/fps", 1, &Uav_Dynamics::fpsCallback, this);
   std::cout << "creating new pos init"<<std::endl;
   new_pos_init_sub = node_.subscribe("/new_pos_init", 1, &Uav_Dynamics::newPosInitCallback, this);
-  std::cout << "created new pos init"<<std::endl;
+  respawn_sub = node_.subscribe("/respawn", 1, &Uav_Dynamics::respawnCallback, this);
+  restart_sub = node_.subscribe("/restart", 1, &Uav_Dynamics::restartCallback, this);
+  //std::cout << "created new pos init"<<std::endl;
 
   if (useSimTime_) {
     clockPub_ = node_.advertise<rosgraph_msgs::Clock>("/clock",1);
@@ -190,6 +193,84 @@ initPose_(7,0)
    attitude_[2] = msg->orientation.z;
    attitude_[3] = msg->orientation.w;
 
+}
+
+double lower_x = 15.0;
+double higher_x = 19.0;
+
+double lower_y = -24.0;
+double higher_y = 4.0;
+
+double lower_z = 4.7;
+double higher_z = 8.1;
+
+double lower_r = -0.2;
+double higher_r = 0.2;
+
+double lower_p = -0.4;
+double higher_p = 0.4;
+
+double lower_ya = 2.1;
+double higher_ya = 0.88;
+
+std::uniform_real_distribution<double> unif_x(lower_x, higher_x);
+std::uniform_real_distribution<double> unif_y(lower_y, higher_y);
+std::uniform_real_distribution<double> unif_z(lower_z, higher_z);
+std::uniform_real_distribution<double> unif_r(lower_r, higher_r);
+std::uniform_real_distribution<double> unif_p(lower_p, higher_p);
+std::uniform_real_distribution<double> unif_ya(lower_ya, higher_ya);
+std::default_random_engine re;
+
+int start_ = 30;
+int current_ = 0;
+
+void Uav_Dynamics::restartCallback(std_msgs::Int32 msg){
+  ROS_ERROR_STREAM("restart");
+  current_ = 0;
+}
+void Uav_Dynamics::respawnCallback(std_msgs::Int32 msg){
+  //ROS_ERROR_STREAM("hit respawn");
+  // make respawning delay, then only happen once
+  //ROS_ERROR_STREAM("current "<<current_<<", start "<<start_);
+  if(current_ < start_){
+    current_++;
+    return;
+  }
+  else if(current_ > start_)
+    return;
+  current_++;
+
+  double random_x = unif_x(re);
+  double random_y = unif_y(re);
+  double random_z = unif_z(re);
+  double r = unif_r(re);
+  double p = unif_p(re);
+  double y = unif_ya(re);
+
+  tf::Quaternion q = tf::createQuaternionFromRPY(r, p, y);
+
+  ROS_ERROR_STREAM("should respawn "<<initPose_.at(1)<<", did respawn "<<random_y);
+  position_[0] = random_x;//initPose_.at(0);
+  position_[1] = random_y;//initPose_.at(1);
+  position_[2] = random_z;//6.5;//initPose_.at(2);
+
+  attitude_[0] = q.x();//initPose_.at(3);
+  attitude_[1] = q.y();//initPose_.at(4);
+  attitude_[2] = q.z();//initPose_.at(5);
+  attitude_[3] = q.w();//initPose_.at(6);
+
+  lpf_.resetState();
+  pid_.resetState();
+
+  for (size_t i = 0; i<3; i++){
+    angVelocity_[i] = 0.;
+    velocity_[i] = 0.;
+    specificForce_[i] = 0.;
+    propSpeed_[i] = sqrt(vehicleMass_/4.*grav_/thrustCoeff_);
+  }
+  propSpeed_[3] = sqrt(vehicleMass_/4.*grav_/thrustCoeff_);
+
+  specificForce_[2] = 9.81;
 }
 
 /**

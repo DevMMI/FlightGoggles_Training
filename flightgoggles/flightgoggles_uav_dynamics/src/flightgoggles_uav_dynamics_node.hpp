@@ -15,12 +15,13 @@
 #include <tf2_ros/transform_listener.h>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2_ros/transform_broadcaster.h>
-
+#include <random>
 // Messages
 #include <mav_msgs/RateThrust.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/TransformStamped.h>
 #include <std_msgs/String.h>
+#include <std_msgs/Int32.h>
 #include <sensor_msgs/Imu.h>
 #include <std_msgs/Float32.h>
 #include <rosgraph_msgs/Clock.h>
@@ -115,6 +116,8 @@ class Uav_Dynamics {
         ros::Subscriber collisionSub_;
 	      ros::Subscriber frameRateSub_;
         ros::Subscriber new_pos_init_sub;
+        ros::Subscriber respawn_sub;
+        ros::Subscriber restart_sub;
         //@}
 
         /// @name Timers
@@ -129,6 +132,8 @@ class Uav_Dynamics {
         void collisionCallback(std_msgs::Empty::Ptr msg);
 	      void fpsCallback(std_msgs::Float32::Ptr msg);
         void newPosInitCallback(geometry_msgs::Pose::Ptr msg);
+        void respawnCallback(std_msgs::Int32 msg);
+        void restartCallback(std_msgs::Int32 msg);
 
         //@}
 

@@ -18,6 +18,7 @@ from sensor_msgs.msg import Joy
 gates_iterator = -1
 gates_dir = "flightgoggles/flightgoggles/final_challenge_course_gates.yaml"
 gates_it_name = "gate_results/gate_it.txt"
+trial_storage = "gate_results/trial_storage.txt"
 labels_dir = "data/labels"
 images_dir = "data/images"
 fg = open(gates_dir, "r")
@@ -129,6 +130,11 @@ def signal_handler(sig, frame):
     print("clearing")
     empty_vals()
     #time.sleep(3)
+    ap = open(trial_storage, 'a')
+    ap.write(str(gates_iterator-1))
+    ap.close()
+
+
     print('\n Bye bye!')
     sys.stdout.flush()
     sys.exit(0)
@@ -193,7 +199,7 @@ def callback(image_data_l, image_data_r, tf_data, lidar_data, imu_data):
     #print("published")
     left_name = "left{}".format(gates_iterator) + ".jpg"
     output_image_l = os.path.join(images_dir, left_name)
-    right_name = "left{}".format(gates_iterator) + ".jpg"
+    right_name = "right{}".format(gates_iterator) + ".jpg"
     output_image_r = os.path.join(images_dir, right_name)
 
     cv2.imwrite(output_image_l, cv_image_l)
@@ -247,16 +253,29 @@ def callback(image_data_l, image_data_r, tf_data, lidar_data, imu_data):
     # cv2.waitKey(50)
 
 def getControlDict(val):
+    val1 = val[0] if val[0] != -0.0 else 0.0
+    val2 = val[1] if val[1] != -0.0 else 0.0
+    val3 = val[2] if val[2] != -0.0 else 0.0
+    val4 = val[3] if val[3] != -0.0 else 0.0
     data = dict(
-        yaw = val[0],
-        vertical = val[1],
-        roll = val[2],
-        pitch = val[3],
+        yaw = val1,
+        vertical = val2,
+        roll = val3,
+        pitch = val4,
+    )
+    return data
+
+def getEmptyControlDict():
+    data = dict(
+        yaw = 0.0,
+        vertical = 0.0,
+        roll = 0.0,
+        pitch = 0.0,
     )
     return data
 
 def empty_vals():
-    print("hitting")
+    #print("hitting")
     global labels_dir
     global control_msgs
     global label_storage
@@ -265,7 +284,8 @@ def empty_vals():
     if len(label_storage) == 0:
         return
 
-    post_time = 0.0164 # calculated by average time between subsequent images
+    #post_time = 0.0164 # calculated by average time between subsequent images
+    post_time = 0.014
     labels_to_be_written = {}
     #found_series = False
     label_storage_cp = dict(label_storage)
@@ -277,27 +297,33 @@ def empty_vals():
         label_id = key_l.id
         control_msgs_cp = dict(control_msgs) # update so we lose the control messages that are taken
         control_msgs_iter = 0
+        control_msg_created = False
         for key, val in control_msgs_cp.iteritems():
-            #print("key {}, label_time {}".format(key, label_time))
             if(key < label_time):
-                # control msgs that are before this label
                 del control_msgs[key]
             if(key > label_time):
-                # control msgs after this label
                 if(key - label_time < post_time):
                     # add it to label as rightful control message
                     #print("key {}".format(key))
-                    label_storage[key_l]["control{}".format(control_msgs_iter)] = getControlDict(val)
-                    control_msgs_iter+=1
+                    label_storage[key_l]["control"] = getControlDict(val)
+                    control_msg_created = True
                     del control_msgs[key]
+                    break
                 else:
-                    # have reached point
                     break
 
-        label_name = "label{}".format(label_id) + ".txt"
-        output_dir = os.path.join(labels_dir, label_name)
-        print("empty writing {}".format(output_dir))
-        with open(output_dir, 'w') as outfile:
+        if not control_msg_created:
+            label_storage[key_l]["control"] = getEmptyControlDict()
+
+        label_name_l = "label_l{}".format(label_id) + ".txt"
+        label_name_r = "label_r{}".format(label_id) + ".txt"
+        output_dir_l = os.path.join(labels_dir, label_name_l)
+        output_dir_r = os.path.join(labels_dir, label_name_r)
+        #print("empty writing {}".format(output_dir))
+        with open(output_dir_l, 'w') as outfile:
+            yaml.dump(label_storage[key_l], outfile, default_flow_style=False)
+
+        with open(output_dir_r, 'w') as outfile:
             yaml.dump(label_storage[key_l], outfile, default_flow_style=False)
         # removing written label from storage
         del label_storage[key_l]
@@ -313,7 +339,7 @@ def dual_callback(event):
     global label_storage
     #print("labels stored {}\n, control msgs stored {}\n\n".format(len(label_storage), len(control_msgs)))
 
-    if len(control_msgs) == 0 or len(label_storage) == 0:
+    if len(label_storage) == 0:
         return
 
     post_time = 0.0164 # calculated by average time between subsequent images
@@ -326,6 +352,7 @@ def dual_callback(event):
         label_time = key_l.time
         label_id = key_l.id
         control_msgs_cp = dict(control_msgs) # update so we lose the control messages that are taken
+        control_msg_created = False
         for key, val in control_msgs_cp.iteritems():
             #print("key {}, label_time {}".format(key, label_time))
             if(key < label_time):
@@ -335,16 +362,27 @@ def dual_callback(event):
                     # add it to label as rightful control message
                     #print("key {}".format(key))
                     label_storage[key_l]["control"] = getControlDict(val)
+                    control_msg_created = True
                     del control_msgs[key]
                     break
                 else:
                     break
 
-        label_name = "label{}".format(label_id) + ".txt"
-        output_dir = os.path.join(labels_dir, label_name)
-        with open(output_dir, 'w') as outfile:
+        if not control_msg_created:
+            label_storage[key_l]["control"] = getEmptyControlDict()
+
+        label_name_l = "label_l{}".format(label_id) + ".txt"
+        label_name_r = "label_r{}".format(label_id) + ".txt"
+        output_dir_l = os.path.join(labels_dir, label_name_l)
+        output_dir_r = os.path.join(labels_dir, label_name_r)
+        #print("empty writing {}".format(output_dir))
+        with open(output_dir_l, 'w') as outfile:
+            yaml.dump(label_storage[key_l], outfile, default_flow_style=False)
+
+        with open(output_dir_r, 'w') as outfile:
             yaml.dump(label_storage[key_l], outfile, default_flow_style=False)
         # removing written label from storage
+        print("writing")
         del label_storage[key_l]
         #print("writing label")
 
@@ -369,6 +407,10 @@ def main():
     fc = open(gates_it_name)
     gates_iterator = int(fc.read().replace('\n',''))
     fc.close()
+#trial_storage = "gate_results/trial_storage.txt"
+    ap = open(trial_storage, 'w+')
+    ap.write(str(gates_iterator)+"\n")
+    ap.close()
 
     # dataCollector()
     # control messages

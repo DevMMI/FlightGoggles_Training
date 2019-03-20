@@ -63,22 +63,22 @@ def callback(ir_data, image_data_l, image_data_r):
          #int(gate_.d.x), int(gate_.d.y)))
         #cv2.rectangle(cv_image, (int(gate_.a.x), int(gate_.a.y)), (int(gate_.d.x), int(gate_.d.y)), (255,0,255), 2)
         if gate_.a.x != -1:
-            cv2.circle(cv_image_l, (int(round(gate_.a.x)), int(round(gate_.a.y))), 5, (255,0,255), -1)
+            cv_image_l = cv2.circle(cv_image_l, (int(round(gate_.a.x)), int(round(gate_.a.y))), 5, (255,0,255), -1)
         if gate_.b.x != -1:
-            cv2.circle(cv_image_l, (int(round(gate_.b.x)), int(round(gate_.b.y))), 5, (255,0,255), -1)
+            cv_image_l = cv2.circle(cv_image_l, (int(round(gate_.b.x)), int(round(gate_.b.y))), 5, (255,0,255), -1)
         if gate_.c.x != -1:
-            cv2.circle(cv_image_l, (int(round(gate_.c.x)), int(round(gate_.c.y))), 5, (255,0,255), -1)
+            cv_image_l = cv2.circle(cv_image_l, (int(round(gate_.c.x)), int(round(gate_.c.y))), 5, (255,0,255), -1)
         if gate_.d.x != -1:
-            cv2.circle(cv_image_l, (int(round(gate_.d.x)), int(round(gate_.d.y))), 5, (255,0,255), -1)
+            cv_image_l = cv2.circle(cv_image_l, (int(round(gate_.d.x)), int(round(gate_.d.y))), 5, (255,0,255), -1)
 
         if gate_.a.x != -1:
-            cv2.circle(cv_image_r, (int(round(gate_.a.x)), int(round(gate_.a.y))), 5, (255,0,255), -1)
+            cv_image_r = cv2.circle(cv_image_r, (int(round(gate_.a.x)), int(round(gate_.a.y))), 5, (255,0,255), -1)
         if gate_.b.x != -1:
-            cv2.circle(cv_image_r, (int(round(gate_.b.x)), int(round(gate_.b.y))), 5, (255,0,255), -1)
+            cv_image_r = cv2.circle(cv_image_r, (int(round(gate_.b.x)), int(round(gate_.b.y))), 5, (255,0,255), -1)
         if gate_.c.x != -1:
-            cv2.circle(cv_image_r, (int(round(gate_.c.x)), int(round(gate_.c.y))), 5, (255,0,255), -1)
+            cv_image_r = cv2.circle(cv_image_r, (int(round(gate_.c.x)), int(round(gate_.c.y))), 5, (255,0,255), -1)
         if gate_.d.x != -1:
-            cv2.circle(cv_image_r, (int(round(gate_.d.x)), int(round(gate_.d.y))), 5, (255,0,255), -1)
+            cv_image_r = cv2.circle(cv_image_r, (int(round(gate_.d.x)), int(round(gate_.d.y))), 5, (255,0,255), -1)
 
     left = bridge.cv2_to_imgmsg(cv_image_l, "bgr8")
     right = bridge.cv2_to_imgmsg(cv_image_r, "bgr8")
